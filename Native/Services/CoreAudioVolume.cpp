@@ -43,8 +43,8 @@ struct Endpoint {
 };
 
 // Exports hold a lease while they use an object, so closing a handle on another thread cannot free it mid-call.
-vnotch::HandleRegistry<Source> g_sources;
-vnotch::HandleRegistry<Endpoint> g_endpoints;
+vnotch::ImmortalHandleRegistry<Source> g_sources;
+vnotch::ImmortalHandleRegistry<Endpoint> g_endpoints;
 
 
 } // namespace vnotch::services::coreaudio
@@ -64,7 +64,7 @@ VN_EXPORT int32_t __stdcall vn_volume_source_create(ca::DeviceChangedCallback ca
         auto source = std::make_unique<ca::Source>();
         HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(source->enumerator.Put()));
         if (SUCCEEDED(hr)) {
-            source->client.ptr = new vnotch::services::EndpointNotification(callback, context, false);
+            source->client.Attach(new vnotch::services::EndpointNotification(callback, context, false));
             hr = source->enumerator.ptr->RegisterEndpointNotificationCallback(source->client.ptr);
             source->registered = SUCCEEDED(hr);
         }
@@ -80,7 +80,8 @@ VN_EXPORT int32_t __stdcall vn_volume_source_create(ca::DeviceChangedCallback ca
 VN_EXPORT int32_t __stdcall vn_volume_source_destroy(int64_t handle) noexcept {
     if (handle <= 0) return VN_ERR_INVALID_ARG;
     auto owner = ca::g_sources.Acquire(handle);
-    if (owner) owner->client.ptr->Disconnect();
+    if (!owner) return VN_ERR_INVALID_ARG;
+    if (owner->client.ptr) owner->client.ptr->Disconnect();
     ca::g_sources.Remove(handle);
     return VN_OK;
 }
@@ -110,8 +111,7 @@ VN_EXPORT int32_t __stdcall vn_volume_endpoint_open(int64_t source_handle, int64
 
 VN_EXPORT int32_t __stdcall vn_volume_endpoint_close(int64_t handle) noexcept {
     if (handle <= 0) return VN_ERR_INVALID_ARG;
-    ca::g_endpoints.Remove(handle);
-    return VN_OK;
+    return ca::g_endpoints.Remove(handle) ? VN_OK : VN_ERR_INVALID_ARG;
 }
 
 VN_EXPORT int32_t __stdcall vn_volume_endpoint_get(int64_t handle, float* out_scalar, uint8_t* out_muted, int32_t* out_hresult) noexcept {

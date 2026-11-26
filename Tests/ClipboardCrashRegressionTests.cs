@@ -280,7 +280,8 @@ public sealed class ClipboardCrashRegressionTests
                 initialized.SetResult(controller);
             }
             catch (Exception ex) { initialized.SetException(ex); }
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         ui.SetApartmentState(ApartmentState.STA);
         ui.Start();
         var owner = await initialized.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -294,6 +295,57 @@ public sealed class ClipboardCrashRegressionTests
 
         static Lazy<Task<Dispatcher>> Reader(ClipboardHistoryController controller) =>
             (Lazy<Task<Dispatcher>>)typeof(ClipboardHistoryController).GetField("_clipboardReader", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(controller)!;
+    }
+
+    [Fact]
+    public void LifecycleHandlersAvoidAsyncVoidAndRunSafelyWhenDisposed() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        foreach (string handlerName in new[] { "SessionSwitch", "PowerModeChanged", "RetentionTick" })
+        {
+            var method = typeof(ClipboardHistoryController).GetMethod(handlerName, BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Assert.Null(method.GetCustomAttribute<System.Runtime.CompilerServices.AsyncStateMachineAttribute>());
+        }
+
+        using var fixture = new Fixture();
+        using var store = new ClipboardHistoryStore(fixture.History);
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        var controller = new ClipboardHistoryController(dispatcher, store);
+        await store.InitializeAsync();
+        await controller.DisposeAsync();
+
+        typeof(ClipboardHistoryController).GetMethod("RetentionTick", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(controller, [null, EventArgs.Empty]);
+        await dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+    });
+
+    [Fact]
+    public void ClipboardTray_HandlersAvoidAsyncVoid()
+    {
+        string[] handlerNames =
+        [
+            "CardAction_Click",
+            "EmptyTray_Click",
+            "Category_Drop",
+            "DeleteSelected_Click",
+            "SaveLabel_Click",
+            "LabelName_KeyDown",
+            "CategoryReorder_KeyDown",
+            "Unlock_Click",
+            "Card_Up",
+            "DustOverlay_DissolveRequested",
+            "Card_Move",
+            "Approve_Click",
+            "RevealDetail_Click",
+            "CopyDetail_Click",
+            "ResetPersonal_Click",
+            "Cards_KeyDown"
+        ];
+
+        foreach (string name in handlerNames)
+        {
+            var method = typeof(ClipboardTray).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Assert.Null(method.GetCustomAttribute<System.Runtime.CompilerServices.AsyncStateMachineAttribute>());
+        }
     }
 
     private static bool ContainsVisualPoint(FrameworkElement visual, Point point)

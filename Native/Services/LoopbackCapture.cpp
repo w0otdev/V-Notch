@@ -48,7 +48,7 @@ struct Capture {
     VnLoopbackFormat format{};
     int32_t block_align = 0;
     HANDLE thread = nullptr;
-    DWORD thread_id = 0;
+    std::atomic<DWORD> thread_id{0};
     HANDLE stop_event = nullptr;
     HANDLE data_event = nullptr;
     DataCallback on_data = nullptr;
@@ -75,7 +75,7 @@ struct Capture {
     void Stop() noexcept {
         stopping.store(true, std::memory_order_release);
         if (stop_event) SetEvent(stop_event);
-        if (GetCurrentThreadId() == thread_id) return;
+        if (GetCurrentThreadId() == thread_id.load(std::memory_order_acquire)) return;
         Guard guard(&stop_lock);
         if (thread) {
             WaitForSingleObject(thread, INFINITE);
@@ -119,7 +119,13 @@ struct Capture {
                 DWORD flags = 0;
                 hr = capture.ptr->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
                 if (FAILED(hr)) break;
-                const int32_t bytes = static_cast<int32_t>(frames) * block_align;
+                const size_t raw_bytes = static_cast<size_t>(frames) * static_cast<size_t>(block_align);
+                if (raw_bytes > static_cast<size_t>(INT32_MAX)) {
+                    capture.ptr->ReleaseBuffer(frames);
+                    hr = E_INVALIDARG;
+                    break;
+                }
+                const int32_t bytes = static_cast<int32_t>(raw_bytes);
                 if (!stopping.load(std::memory_order_acquire) && on_levels) {
                     if (analysis.Process((flags & AUDCLNT_BUFFERFLAGS_SILENT) ? nullptr : data,
                         static_cast<int32_t>(frames), format.channels, format.bits_per_sample, format.is_float, block_align))
@@ -154,7 +160,7 @@ struct Capture {
 };
 
 // Exports that read a capture hold a lease, so a concurrent vn_loopback_stop cannot free it underneath them.
-vnotch::HandleRegistry<Capture> g_captures;
+vnotch::ImmortalHandleRegistry<Capture> g_captures;
 
 DWORD WINAPI Capture::Main(LPVOID param) noexcept {
     std::unique_ptr<decltype(g_captures)::Lease> worker(static_cast<decltype(g_captures)::Lease*>(param));
@@ -175,16 +181,6 @@ HRESULT ResolveDevice(IMMDeviceEnumerator* enumerator, const std::wstring& reque
         }
     }
     return enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, out.Put());
-}
-
-bool ReadId(IMMDevice* device, std::wstring& value) {
-    value.clear();
-    if (!device) return false;
-    LPWSTR id = nullptr;
-    struct Guard { LPWSTR& p; ~Guard() noexcept { if (p) CoTaskMemFree(p); } } guard{id};
-    if (FAILED(device->GetId(&id)) || !id) return false;
-    value.assign(id);
-    return true;
 }
 
 std::wstring DeviceId(IMMDevice* device) {
@@ -229,9 +225,11 @@ static int32_t StartCapture(
             capture->format.channels = mix->nChannels;
             capture->format.bits_per_sample = mix->wBitsPerSample;
             capture->block_align = mix->nBlockAlign;
-            capture->format.is_float = (mix->wFormatTag == WAVE_FORMAT_IEEE_FLOAT ||
-                (mix->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
-                 reinterpret_cast<WAVEFORMATEXTENSIBLE*>(mix)->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) ? 1 : 0;
+            const bool is_extensible_float =
+                mix->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
+                mix->cbSize >= (sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)) &&
+                reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(mix)->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+            capture->format.is_float = (mix->wFormatTag == WAVE_FORMAT_IEEE_FLOAT || is_extensible_float) ? 1 : 0;
             const DWORD flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
             lb::ComPtr<IAudioClient3> low_latency;
             hr = capture->client.ptr->QueryInterface(IID_PPV_ARGS(low_latency.Put()));
@@ -272,14 +270,18 @@ static int32_t StartCapture(
         const auto handle = lb::g_captures.Add(std::move(capture));
         auto owner = lb::g_captures.Acquire(handle);
         *worker = lb::g_captures.Acquire(handle);
-        auto* argument = worker.release();
-        owner->thread = CreateThread(nullptr, 0, lb::Capture::Main, argument, 0, &owner->thread_id);
-        if (!owner->thread) {
+        DWORD created_thread_id = 0;
+        // Start suspended so thread and thread_id are published before Capture::Main or Stop() can observe them.
+        HANDLE thread = CreateThread(nullptr, 0, lb::Capture::Main, worker.get(), CREATE_SUSPENDED, &created_thread_id);
+        if (!thread) {
             *out_hresult = static_cast<int32_t>(HRESULT_FROM_WIN32(GetLastError()));
-            delete argument;
             lb::g_captures.Remove(handle);
             return VN_ERR_FAIL;
         }
+        owner->thread = thread;
+        owner->thread_id.store(created_thread_id, std::memory_order_release);
+        (void)worker.release();
+        ResumeThread(thread);
         *out_handle = handle;
         return VN_OK;
     } catch (...) {

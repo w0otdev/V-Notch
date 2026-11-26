@@ -1,4 +1,5 @@
 #include "vnotch_common.h"
+#include "vnotch_com.h"
 #include "vnotch_handle_registry.h"
 #include <array>
 #include <stdexcept>
@@ -52,56 +53,97 @@ struct Index {
         }
     }
 };
-vnotch::HandleRegistry<Index> indices;
-struct Guard { SRWLOCK* mutex; Guard(SRWLOCK* value) : mutex(value) { AcquireSRWLockExclusive(mutex); } ~Guard() { ReleaseSRWLockExclusive(mutex); } };
+vnotch::ImmortalHandleRegistry<Index> indices;
+using Guard = vnotch::com::SrwExclusiveGuard;
 }
 
 VN_EXPORT int32_t vn_clipboard_index_create(int64_t* handle) noexcept {
     if (!handle) return VN_ERR_INVALID_ARG;
     *handle = 0;
-    try { *handle = indices.Add(std::make_unique<Index>()); return VN_OK; } catch (...) { return VN_ERR_FAIL; }
+    try {
+        *handle = indices.Add(std::make_unique<Index>());
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
-VN_EXPORT int32_t vn_clipboard_index_close(int64_t handle) noexcept { return indices.Remove(handle) ? VN_OK : VN_ERR_INVALID_ARG; }
+
+VN_EXPORT int32_t vn_clipboard_index_close(int64_t handle) noexcept {
+    return indices.Remove(handle) ? VN_OK : VN_ERR_INVALID_ARG;
+}
+
 VN_EXPORT int32_t vn_clipboard_index_put(int64_t handle, uint64_t a, uint64_t b, int32_t slot,
     const char16_t* fingerprint, int32_t length, int64_t ticks, uint8_t personal) noexcept {
     if (slot < 0 || length < 0 || length > 2 * 1024 * 1024 || (!fingerprint && length)) return VN_ERR_INVALID_ARG;
     try {
-        auto owner = indices.Acquire(handle); if (!owner) return VN_ERR_INVALID_ARG;
-        Guard guard(&owner->mutex); auto& index = *owner.get();
+        auto owner = indices.Acquire(handle);
+        if (!owner) return VN_ERR_INVALID_ARG;
+        Guard guard(&owner->mutex);
+        auto& index = *owner.get();
         std::u16string text(vnotch::make_u16_view(fingerprint, length));
         const auto hash = hash_bytes(text.data(), text.size() * sizeof(char16_t)) ^ personal;
-        Key id{a, b}; auto at = index.find(id);
+        Key id{a, b};
+        auto at = index.find(id);
         if (at < 0) {
             index.grow();
-            if (index.free_head < 0) { at = static_cast<int32_t>(index.rows.size()); index.rows.emplace_back(); }
-            else { at = index.free_head; index.free_head = index.rows[at].guid_next; }
+            if (index.free_head < 0) {
+                at = static_cast<int32_t>(index.rows.size());
+                index.rows.emplace_back();
+            } else {
+                at = index.free_head;
+                index.free_head = index.rows[at].guid_next;
+            }
             auto bucket = index.guid_bucket(id);
-            index.rows[at].guid_next = index.guid_buckets[bucket]; index.guid_buckets[bucket] = at; ++index.count;
-        } else index.unlink_fingerprint(at);
-        auto& row = index.rows[at]; Index::wipe(row);
-        row.id = id; row.slot = slot; row.fingerprint = std::move(text); row.fingerprint_hash = hash; row.ticks = ticks; row.personal = personal != 0;
+            index.rows[at].guid_next = index.guid_buckets[bucket];
+            index.guid_buckets[bucket] = at;
+            ++index.count;
+        } else {
+            index.unlink_fingerprint(at);
+        }
+        auto& row = index.rows[at];
+        Index::wipe(row);
+        row.id = id;
+        row.slot = slot;
+        row.fingerprint = std::move(text);
+        row.fingerprint_hash = hash;
+        row.ticks = ticks;
+        row.personal = personal != 0;
         const auto bucket = index.fingerprint_bucket(hash);
-        row.fingerprint_next = index.fingerprint_buckets[bucket]; index.fingerprint_buckets[bucket] = at;
+        row.fingerprint_next = index.fingerprint_buckets[bucket];
+        index.fingerprint_buckets[bucket] = at;
         return VN_OK;
-    } catch (...) { return VN_ERR_FAIL; }
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
+
 VN_EXPORT int32_t vn_clipboard_index_find(int64_t handle, uint64_t a, uint64_t b, int32_t* slot) noexcept {
-    if (!slot) return VN_ERR_INVALID_ARG; *slot = -1;
-    auto owner = indices.Acquire(handle); if (!owner) return VN_ERR_INVALID_ARG;
-    Guard guard(&owner->mutex); auto at = owner->find({a,b}); if (at >= 0) *slot = owner->rows[at].slot;
+    if (!slot) return VN_ERR_INVALID_ARG;
+    *slot = -1;
+    auto owner = indices.Acquire(handle);
+    if (!owner) return VN_ERR_INVALID_ARG;
+    Guard guard(&owner->mutex);
+    auto at = owner->find({a, b});
+    if (at >= 0) *slot = owner->rows[at].slot;
     return VN_OK;
 }
+
 VN_EXPORT int32_t vn_clipboard_index_remove(int64_t handle, uint64_t a, uint64_t b) noexcept {
     try {
-        auto owner = indices.Acquire(handle); if (!owner) return VN_ERR_INVALID_ARG;
-        Guard guard(&owner->mutex); auto& index = *owner.get();
-        auto at = index.find({a,b}); if (at < 0) return VN_OK;
+        auto owner = indices.Acquire(handle);
+        if (!owner) return VN_ERR_INVALID_ARG;
+        Guard guard(&owner->mutex);
+        auto& index = *owner.get();
+        auto at = index.find({a, b});
+        if (at < 0) return VN_OK;
         index.unlink_fingerprint(at);
-        auto* link = &index.guid_buckets[index.guid_bucket({a,b})];
+        auto* link = &index.guid_buckets[index.guid_bucket({a, b})];
         while (*link != at) link = &index.rows[*link].guid_next;
         *link = index.rows[at].guid_next;
-        Index::wipe(index.rows[at]); index.rows[at].slot = -1;
-        index.rows[at].guid_next = index.free_head; index.free_head = at;
+        Index::wipe(index.rows[at]);
+        index.rows[at].slot = -1;
+        index.rows[at].guid_next = index.free_head;
+        index.free_head = at;
         if (--index.count == 0) {
             index.rows.clear();
             index.rows.shrink_to_fit();
@@ -117,18 +159,26 @@ VN_EXPORT int32_t vn_clipboard_index_remove(int64_t handle, uint64_t a, uint64_t
             }
         }
         return VN_OK;
-    } catch (...) { return VN_ERR_FAIL; }
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
+
 VN_EXPORT int32_t vn_clipboard_index_duplicate(int64_t handle, const char16_t* fingerprint, int32_t length, uint8_t personal, int32_t* slot) noexcept {
-    if (!slot || length < 0 || (!fingerprint && length)) return VN_ERR_INVALID_ARG; *slot = -1;
-    auto owner = indices.Acquire(handle); if (!owner) return VN_ERR_INVALID_ARG;
+    if (!slot || length < 0 || (!fingerprint && length)) return VN_ERR_INVALID_ARG;
+    *slot = -1;
+    auto owner = indices.Acquire(handle);
+    if (!owner) return VN_ERR_INVALID_ARG;
     Guard guard(&owner->mutex);
     auto text = vnotch::make_u16_view(fingerprint, length);
     auto hash = hash_bytes(text.data(), text.size() * sizeof(char16_t)) ^ personal;
     int64_t newest = INT64_MIN;
     for (auto at = owner->fingerprint_buckets[owner->fingerprint_bucket(hash)]; at >= 0; at = owner->rows[at].fingerprint_next) {
         auto& row = owner->rows[at];
-        if (row.personal == (personal != 0) && row.fingerprint == text && (*slot < 0 || row.ticks > newest)) { *slot = row.slot; newest = row.ticks; }
+        if (row.personal == (personal != 0) && row.fingerprint == text && (*slot < 0 || row.ticks > newest)) {
+            *slot = row.slot;
+            newest = row.ticks;
+        }
     }
     return VN_OK;
 }

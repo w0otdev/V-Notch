@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using VNotch.Interop;
 using VNotch.Services;
 using Vortice.Direct3D9;
 using Vortice.Mathematics;
@@ -14,14 +15,16 @@ namespace VNotch.Controllers;
 
 internal sealed partial class D3DImageFramePresenter : IDisposable
 {
-    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_score_d3d9_adapter", StringMarshalling = StringMarshalling.Utf16)]
+    private const string NativeDll = NativeAbi.LibraryName;
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_glass_score_d3d9_adapter", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int NativeScoreD3D9Adapter(
         ReadOnlySpan<char> description,
         int descLen,
         uint vendorId,
         out long outScore);
 
-    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_should_submit_frame")]
+    [LibraryImport(NativeDll, EntryPoint = "vn_glass_should_submit_frame")]
     private static partial int NativeShouldSubmitFrame(
         long nowTicks,
         long lastSubmitTicks,
@@ -91,7 +94,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         return (frames,
             frames == 0 ? 0 : ticks * 1000.0 / Stopwatch.Frequency / frames);
     }
-    private bool _disposed;
+    private volatile bool _disposed;
     private bool _failed;
     private int _sessionGeneration;
     private bool _acceptingFrames;

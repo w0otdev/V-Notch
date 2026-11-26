@@ -39,7 +39,7 @@ internal sealed class SpotlightChatStore : IChatRepository
             {
                 var chats = JsonSerializer.Deserialize<List<SpotlightSavedChat>>(DataProtection.Unprotect(File.ReadAllText(_path)))
                     ?? throw new JsonException("Chat history must contain a list.");
-                if (chats.Any(chat => chat == null || chat.Messages == null || chat.Messages.Contains(null!)))
+                if (chats.Any(chat => chat == null || chat.Messages == null || chat.Messages.Any(m => m is null)))
                     throw new JsonException("Invalid chat history.");
                 _canSave = true;
                 return chats;
@@ -73,11 +73,12 @@ internal sealed class SpotlightChatStore : IChatRepository
         lock (_gate)
         {
             if (!_canSave) return false;
-            string tempPath = _path + ".tmp";
+            string tempPath = $"{_path}.{Guid.NewGuid():N}.tmp";
             try
             {
                 string encrypted = DataProtection.Protect(JsonSerializer.Serialize(chats));
-                Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+                string? directory = Path.GetDirectoryName(_path);
+                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
                 File.WriteAllText(tempPath, encrypted);
                 File.Move(tempPath, _path, true);
                 return true;

@@ -265,4 +265,14 @@ public sealed class MainWindowUpdateNotificationTests
         await pending;
         Assert.False(Field<bool>(fixture.Window, "_isUpdateAvailable"));
     });
+
+    [Fact]
+    public void UpdateHandlersAvoidAsyncVoid()
+    {
+        foreach (string name in new[] { "UpdateCheckTimer_Tick", "UpdateNotification_Click" })
+        {
+            var method = typeof(MainWindow).GetMethod(name, Private)!;
+            Assert.Null(method.GetCustomAttribute<System.Runtime.CompilerServices.AsyncStateMachineAttribute>());
+        }
+    }
 }

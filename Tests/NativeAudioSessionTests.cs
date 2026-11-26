@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace VNotch.Tests;
 
+[Collection("AudioDevice")]
 public sealed class NativeAudioSessionTests(ITestOutputHelper output)
 {
     [Fact]
@@ -24,7 +25,10 @@ public sealed class NativeAudioSessionTests(ITestOutputHelper output)
                 playback.Play();
                 await Task.Delay(150);
                 using var sessions = WindowsMediaAudioSessions.ReadAllEndpoints();
-                var controlled = Assert.Single(sessions.Sessions.Where(s => s.GetProcessID == (uint)Environment.ProcessId && s.State == 1));
+                var controlled = Assert.Single(sessions.Sessions.Where(s =>
+                    s.GetProcessID == (uint)Environment.ProcessId &&
+                    s.State == 1 &&
+                    s.GetSessionIdentifier?.StartsWith(device.ID, StringComparison.OrdinalIgnoreCase) == true));
                 using var lease = controlled.SimpleAudioVolume;
                 float originalVolume = lease.Volume;
                 bool originalMute = lease.Mute;

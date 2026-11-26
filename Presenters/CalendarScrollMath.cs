@@ -20,7 +20,7 @@ public static partial class CalendarScrollMath
         HighlightDiameter = diameter;
     }
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_calendar_get_geometry(out int totalDays, out double cellWidth, out double highlightDiameter);
 
     public static int ClampIndex(int idx)
@@ -55,19 +55,19 @@ public static partial class CalendarScrollMath
         return new ScrollStepResult(remaining, newIdx, oldIdx, stepCount);
     }
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_calendar_clamp_index(int idx, out int out_clamped);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_calendar_center_index_from_strip_x(double strip_x, out int out_center_idx);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_calendar_highlight_x_for_index(int center_idx, out double out_highlight_x);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_calendar_strip_x_for_index(int center_idx, out double out_strip_x);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_calendar_compute_scroll_step(
         double accumulator,
         int delta,

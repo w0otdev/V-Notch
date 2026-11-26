@@ -11,6 +11,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Xml;
 using System.Xml.Linq;
+using VNotch.Interop;
 using Windows.Storage;
 using Windows.Storage.FileProperties;
 
@@ -18,7 +19,7 @@ namespace VNotch.Services;
 
 internal static partial class FileIconProvider
 {
-    private const string NativeDll = "VNotch.Native.dll";
+    private const string NativeDll = NativeAbi.LibraryName;
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct VnFileIconExtensionFlags
@@ -140,36 +141,21 @@ internal static partial class FileIconProvider
             }
 
             string xml = doc.ToString(SaveOptions.DisableFormatting);
-            if (true)
+            ReadOnlySpan<char> xmlSpan = xml.AsSpan();
+            // The Icon element sits near the top; avoid reading large embedded binaries.
+            if (vn_file_icon_provider_parse_msc_icon_xml(xmlSpan, xmlSpan.Length, out int parsedIdx, out int fileStart, out int fileLen, out byte matched) == 0 && matched != 0)
             {
-                // The Icon element sits near the top; avoid reading large embedded binaries.
-
-
-                try
+                index = parsedIdx;
+                file = Environment.ExpandEnvironmentVariables(new string(xmlSpan.Slice(fileStart, fileLen)).Trim());
+                if (!CanProbeLocalFilesystemPath(file))
+                    return null;
+                // Some consoles ship a malformed path (e.g. %SystemRoot%\Windows\system32).
+                if (!File.Exists(file))
                 {
-                    ReadOnlySpan<char> xmlSpan = xml.AsSpan();
-                    // xmlSpan initialized above
-                    if (vn_file_icon_provider_parse_msc_icon_xml(xmlSpan, xmlSpan.Length, out int parsedIdx, out int fileStart, out int fileLen, out byte matched) == 0 && matched != 0)
-                    {
-                        index = parsedIdx;
-                        file = Environment.ExpandEnvironmentVariables(new string(xmlSpan.Slice(fileStart, fileLen)).Trim());
-                        if (!CanProbeLocalFilesystemPath(file))
-                            return null;
-                        // Some consoles ship a malformed path (e.g. %SystemRoot%\Windows\system32).
-                        if (!File.Exists(file))
-                        {
-                            string sysPath = Path.Combine(Environment.SystemDirectory, Path.GetFileName(file));
-                            if (!CanProbeLocalFilesystemPath(sysPath))
-                                return null;
-                            file = sysPath;
-                        }
-                        // Some consoles ship a malformed path (e.g. %SystemRoot%\Windows\system32).
-                        // System32 fallback handled above
-                    }
-                }
-                finally
-                {
-
+                    string sysPath = Path.Combine(Environment.SystemDirectory, Path.GetFileName(file));
+                    if (!CanProbeLocalFilesystemPath(sysPath))
+                        return null;
+                    file = sysPath;
                 }
             }
             if (file == null || !File.Exists(file))

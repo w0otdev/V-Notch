@@ -41,7 +41,7 @@ struct RegistryWatch {
         SetEvent(self->signal);
     }
 };
-vnotch::HandleRegistry<RegistryWatch> watches;
+vnotch::ImmortalHandleRegistry<RegistryWatch> watches;
 }
 
 VN_EXPORT int32_t __stdcall vn_registry_watch_create(HKEY hive, const wchar_t* path, int32_t length,

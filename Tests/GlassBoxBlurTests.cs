@@ -1,12 +1,20 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
 using VNotch.Benchmarks;
 using VNotch.Controllers;
+using VNotch.Interop;
 using Xunit;
 
 namespace VNotch.Tests;
 
-public sealed class GlassBoxBlurTests
+public sealed partial class GlassBoxBlurTests
 {
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_glass_frame_fingerprint_compute(
+        ReadOnlySpan<byte> pixels,
+        int width,
+        int height,
+        out ulong outHash);
     [Theory]
     [InlineData(1)]
     [InlineData(3)]
@@ -76,5 +84,22 @@ public sealed class GlassBoxBlurTests
         GlassBoxBlur.Horizontal(pixels, scratch, w, 20, 0, h);
         GlassBoxBlur.Vertical(scratch, output, w, h, 20, 0, w);
         Assert.True(pixels.AsSpan().SequenceEqual(output));
+    }
+
+    [Fact]
+    public void GlassFrameFingerprint_HandlesOddWidthAndUnalignedSliceIdentically()
+    {
+        const int width = 7;
+        const int height = 5;
+        byte[] buffer = new byte[width * height * 4 + 1];
+        for (int i = 0; i < width * height * 4; i++)
+            buffer[i] = (byte)((i * 31 + 17) & 0xFF);
+
+        Assert.Equal(0, vn_glass_frame_fingerprint_compute(buffer.AsSpan(0, width * height * 4), width, height, out ulong alignedHash));
+        Assert.NotEqual(0UL, alignedHash);
+
+        Buffer.BlockCopy(buffer, 0, buffer, 1, width * height * 4);
+        Assert.Equal(0, vn_glass_frame_fingerprint_compute(buffer.AsSpan(1, width * height * 4), width, height, out ulong unalignedHash));
+        Assert.Equal(alignedHash, unalignedHash);
     }
 }

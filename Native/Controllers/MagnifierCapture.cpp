@@ -546,7 +546,7 @@ BOOL CALLBACK Source::ScalingTrampoline(HWND, void* srcdata, MAGIMAGEHEADER srch
     return (source != nullptr && source->OnScalingCallback(srcdata, srcheader)) ? TRUE : FALSE;
 }
 
-vnotch::HandleRegistry<Source> g_sources;
+vnotch::ImmortalHandleRegistry<Source> g_sources;
 using SourceLease = decltype(g_sources)::Lease;
 
 HWND ToHwnd(int64_t value) noexcept {

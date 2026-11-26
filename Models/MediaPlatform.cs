@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using VNotch.Interop;
 
 namespace VNotch.Models;
 
@@ -24,10 +25,10 @@ public enum MediaPlatform
 
 public static partial class MediaPlatformExtensions
 {
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static unsafe partial int vn_platform_parse(char* valPtr, int valLen, out int outPlatform);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static unsafe partial int vn_platform_to_display_string(int platform, char* outBuf, int outCap, out int outLen);
 
     public static unsafe string ToDisplayString(this MediaPlatform platform)

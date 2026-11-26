@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using VNotch.Interop;
 using VNotch.Models;
 using VNotch.Services;
 using static VNotch.Services.Win32Interop;
@@ -19,6 +20,7 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
 {
     private const string LogTag = "SPOTLIGHT-HOTKEY";
     private const int HotkeyId = 0x564E;
+    private const int ErrorHotkeyAlreadyRegistered = 1409;
 
     private readonly Func<SpotlightWindow> _windowFactory;
     private SpotlightWindow? _window;
@@ -58,6 +60,8 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
 
     public void ApplySettings(NotchSettings settings)
     {
+        if (_disposed) return;
+
         bool spotlightChanged = _settings == null || _settings.EnableSpotlight != settings.EnableSpotlight;
         bool historyChanged = _settings == null || _settings.EnableSpotlightHistory != settings.EnableSpotlightHistory;
         bool languageChanged = _settings == null || !string.Equals(_settings.Language, settings.Language, StringComparison.Ordinal);
@@ -65,13 +69,7 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
             || !string.Equals(_settings.NotchStyle, settings.NotchStyle, StringComparison.OrdinalIgnoreCase)
             || !(_settings.LiquidGlass?.ValueEquals(settings.LiquidGlass) ?? (settings.LiquidGlass == null));
 
-        bool aiChanged = _settings == null
-            || _settings.SpotlightDefaultAi != settings.SpotlightDefaultAi
-            || _settings.SpotlightAiWordsPerSecond != settings.SpotlightAiWordsPerSecond
-            || !string.Equals(_settings.SpotlightAiProvider, settings.SpotlightAiProvider, StringComparison.Ordinal)
-            || VNotch.Services.Spotlight.SpotlightAiService.Providers.Any(provider =>
-                VNotch.Services.Spotlight.SpotlightAiService.Configuration(_settings, provider)
-                != VNotch.Services.Spotlight.SpotlightAiService.Configuration(settings, provider));
+        bool aiChanged = HasAiConfigChanged(_settings, settings);
 
         _settings = settings.Clone();
         if (glassChanged || historyChanged || languageChanged || aiChanged)
@@ -100,7 +98,7 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
             }
 
             int error = Marshal.GetLastWin32Error();
-            if (error == 1409 && EnsureKeyboardHook())
+            if (error == ErrorHotkeyAlreadyRegistered && EnsureKeyboardHook())
             {
                 RuntimeLog.Warn(LogTag,
                     "Alt+Space is owned by another app; keyboard fallback enabled");
@@ -110,6 +108,27 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
             RuntimeLog.Warn(LogTag,
                 $"Could not enable Alt+Space (Win32={error})");
         }
+    }
+
+    private static bool HasAiConfigChanged(NotchSettings? previous, NotchSettings current)
+    {
+        if (previous == null
+            || previous.SpotlightDefaultAi != current.SpotlightDefaultAi
+            || previous.SpotlightAiWordsPerSecond != current.SpotlightAiWordsPerSecond
+            || !string.Equals(previous.SpotlightAiProvider, current.SpotlightAiProvider, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        foreach (string provider in VNotch.Services.Spotlight.SpotlightAiService.Providers)
+        {
+            if (VNotch.Services.Spotlight.SpotlightAiService.Configuration(previous, provider)
+                != VNotch.Services.Spotlight.SpotlightAiService.Configuration(current, provider))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -153,13 +172,13 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
         return dispatch != 0;
     }
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_spotlight_is_alt_space_key(uint vk_code, uint flags, out byte out_match);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_spotlight_is_escape_key(uint vk_code, out byte out_match);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_spotlight_should_dispatch_fallback_toggle(
         byte space_already_down, uint last_space_time, uint current_time, out byte out_dispatch);
 
@@ -271,7 +290,13 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
         }
     }
 
-    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+    public void Dispose()
+    {
+        var window = _window;
+        DisposeCore();
+        if (window != null)
+            Task.Run(() => FlushWindowPersistenceAsync(window)).Wait(TimeSpan.FromSeconds(5));
+    }
 
     private void DisposeCore()
     {
@@ -284,7 +309,11 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
     {
         var window = _window;
         DisposeCore();
-        if (window == null) return;
+        if (window != null) await FlushWindowPersistenceAsync(window).ConfigureAwait(false);
+    }
+
+    private static async Task FlushWindowPersistenceAsync(SpotlightWindow window)
+    {
         try { await window.FlushPersistenceAsync().ConfigureAwait(false); }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or AggregateException)
         { RuntimeLog.Warn("SPOTLIGHT", $"Could not flush window preferences: {ex.Message}"); }

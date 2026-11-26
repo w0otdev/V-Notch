@@ -54,12 +54,12 @@ public:
 
 extern "C" {
 
-VN_EXPORT int32_t vn_spotlight_launcher_classify_system_action(
+VN_EXPORT int32_t __stdcall vn_spotlight_launcher_classify_system_action(
     const char16_t* target,
     int32_t target_len,
     int32_t* out_action,
     int32_t* out_wait_ms) noexcept {
-    if (!out_action || !out_wait_ms || (!target && target_len > 0) || target_len < 0) return VN_E_INVALID_ARG;
+    if (!out_action || !out_wait_ms || (!target && target_len > 0) || target_len < 0) return VN_ERR_INVALID_ARG;
     const std::u16string_view sv(target ? target : u"", static_cast<size_t>(target_len));
     int32_t wait_ms = 0;
     *out_action = vnotch::services::spotlight::SpotlightLauncher::ClassifySystemAction(sv, wait_ms);
@@ -67,21 +67,21 @@ VN_EXPORT int32_t vn_spotlight_launcher_classify_system_action(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_spotlight_launcher_is_target_string_safe(
+VN_EXPORT int32_t __stdcall vn_spotlight_launcher_is_target_string_safe(
     const char16_t* target,
     int32_t target_len,
     uint8_t* out_safe) noexcept {
-    if (!out_safe || (!target && target_len > 0) || target_len < 0) return VN_E_INVALID_ARG;
+    if (!out_safe || (!target && target_len > 0) || target_len < 0) return VN_ERR_INVALID_ARG;
     const std::u16string_view sv(target ? target : u"", static_cast<size_t>(target_len));
     *out_safe = vnotch::services::spotlight::SpotlightLauncher::IsTargetStringSafe(sv) ? 1 : 0;
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_spotlight_launcher_is_apps_folder_target(
+VN_EXPORT int32_t __stdcall vn_spotlight_launcher_is_apps_folder_target(
     const char16_t* target,
     int32_t target_len,
     uint8_t* out_is_apps_folder) noexcept {
-    if (!out_is_apps_folder || (!target && target_len > 0) || target_len < 0) return VN_E_INVALID_ARG;
+    if (!out_is_apps_folder || (!target && target_len > 0) || target_len < 0) return VN_ERR_INVALID_ARG;
     const std::u16string_view sv(target ? target : u"", static_cast<size_t>(target_len));
     *out_is_apps_folder = vnotch::services::spotlight::SpotlightLauncher::IsAppsFolderTarget(sv) ? 1 : 0;
     return VN_OK;
@@ -90,11 +90,25 @@ VN_EXPORT int32_t vn_spotlight_launcher_is_apps_folder_target(
 VN_EXPORT int32_t __stdcall vn_spotlight_launcher_reveal_in_explorer(
     const char16_t* path,
     int32_t path_len) noexcept {
-    if (!path || path_len <= 0 || path_len >= 32768) return VN_E_INVALID_ARG;
+    if (!path || path_len <= 0 || path_len >= 32768) return VN_ERR_INVALID_ARG;
     const std::u16string_view sv(path, static_cast<size_t>(path_len));
-    if (!vnotch::services::spotlight::SpotlightLauncher::IsTargetStringSafe(sv)) return VN_E_INVALID_ARG;
+    if (!vnotch::services::spotlight::SpotlightLauncher::IsTargetStringSafe(sv)) return VN_ERR_INVALID_ARG;
 
     try {
+        struct StaComScope {
+            HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+            bool should_uninit = SUCCEEDED(hr);
+            StaComScope() noexcept = default;
+            StaComScope(const StaComScope&) = delete;
+            StaComScope& operator=(const StaComScope&) = delete;
+            ~StaComScope() noexcept {
+                if (should_uninit) ::CoUninitialize();
+            }
+        };
+
+        StaComScope com_scope;
+        if (FAILED(com_scope.hr) && com_scope.hr != RPC_E_CHANGED_MODE) return VN_ERR_FAIL;
+
         wchar_t stack_buf[1024];
         std::wstring heap_buf;
         const wchar_t* c_path = nullptr;
@@ -107,10 +121,6 @@ VN_EXPORT int32_t __stdcall vn_spotlight_launcher_reveal_in_explorer(
             c_path = heap_buf.c_str();
         }
 
-        const HRESULT hr_co = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-        const bool should_uninit = SUCCEEDED(hr_co);
-        if (FAILED(hr_co) && hr_co != RPC_E_CHANGED_MODE) return VN_ERR_FAIL;
-
         PIDLIST_ABSOLUTE pidl = nullptr;
         HRESULT hr = ::SHParseDisplayName(c_path, nullptr, &pidl, 0, nullptr);
         if (SUCCEEDED(hr) && pidl != nullptr) {
@@ -118,7 +128,6 @@ VN_EXPORT int32_t __stdcall vn_spotlight_launcher_reveal_in_explorer(
             ::ILFree(pidl);
         }
 
-        if (should_uninit) ::CoUninitialize();
         return SUCCEEDED(hr) ? VN_OK : VN_ERR_FAIL;
     } catch (...) {
         return VN_ERR_FAIL;

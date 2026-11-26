@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using VNotch.Interop;
 using VNotch.Models;
 using VNotch.Services;
 using static VNotch.Services.AnimationPrimitives;
@@ -15,21 +16,19 @@ namespace VNotch;
 
 public partial class MainWindow
 {
-    #region Update Notification Handlers
-
     private const string LocKeyUpdateReady = "update.readyToUpdate";
     private const string LocKeyUpdateVersion = "update.version";
     private const string LocKeyUpdateClickToInstall = "update.clickToInstall";
     private UiScheduledTimer? _updatePulseTimer;
     private DateTime _updatePulseStartedAtUtc;
 
-    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
+    [System.Runtime.InteropServices.LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_animation_compute_update_pulse_rgb(double elapsedMs, out byte outR, out byte outG, out byte outB);
 
-    private async void UpdateCheckTimer_Tick(object? sender, EventArgs e)
+    private void UpdateCheckTimer_Tick(object? sender, EventArgs e)
     {
         if (_updateService == null) return;
-        await CheckForUpdatesAsync();
+        CheckForUpdatesAsync().SafeFireAndForget("UPDATER");
     }
 
     private void OnUpdateCheckCompleted(object? sender, UpdateInfo? updateInfo)
@@ -270,10 +269,16 @@ public partial class MainWindow
         if (UpdateIconBrush != null) { UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, null); UpdateIconBrush.Color = Color.FromRgb(48, 209, 88); }
     }
 
-    private async void UpdateNotification_Click(object sender, MouseButtonEventArgs e)
+    private void UpdateNotification_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
 
+        if (_updateService == null || _availableUpdate == null || _isUpdateInstalling) return;
+        InstallAvailableUpdateAsync().SafeFireAndForget("UPDATER");
+    }
+
+    private async Task InstallAvailableUpdateAsync()
+    {
         if (_updateService == null || _availableUpdate == null || _isUpdateInstalling) return;
 
         _isUpdateInstalling = true;
@@ -326,8 +331,9 @@ public partial class MainWindow
                     MessageBoxImage.Warning);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            RuntimeLog.Error("UPDATER", ex, "Update installation failed");
             updateProgressWindow.Close();
             _isUpdateInstalling = false;
             UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-");
@@ -446,6 +452,4 @@ public partial class MainWindow
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOut, VNotch.Services.AnimationConfig.TargetFps);
         UpdateInlineTooltip.BeginAnimation(OpacityProperty, fadeOut, HandoffBehavior.SnapshotAndReplace);
     }
-
-    #endregion
 }

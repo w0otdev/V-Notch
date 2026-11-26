@@ -55,6 +55,14 @@ public sealed partial class NativeSpotlightSfxTests(ITestOutputHelper output)
 
         // A second load keeps the first result and is free.
         Assert.Equal(0, vn_spotlight_sfx_load(asset, asset.Length, out _));
+
+        // Consecutive playback calls replace the active sound cleanly.
+        for (int i = 0; i < 4; i++)
+        {
+            int consecutive = vn_spotlight_sfx_play(0f);
+            Assert.True(consecutive == 0 || consecutive == -3, $"unexpected play status {consecutive}");
+        }
+        Assert.Equal(0, vn_spotlight_sfx_stop());
     }
 
     [Fact]

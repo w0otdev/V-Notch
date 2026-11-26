@@ -93,6 +93,27 @@ public sealed class SpotlightIconHydrationTests : IDisposable
         Assert.Same(bitmap, vm.Results[1].Icon);
     }
 
+    [Fact]
+    public async Task SpotlightViewModel_RapidCancelAndDisposeDuringHydration_DoesNotThrow()
+    {
+        string file = Path.Combine(_tempDir, "sample.txt");
+        await File.WriteAllTextAsync(file, "x");
+        var items = Enumerable.Range(0, 8)
+            .Select(i => new SpotlightSearchItem($"file:{i}", SpotlightResultKind.File, $"File {i}", "File", file, file) { Score = 100 - i })
+            .ToArray();
+        var provider = new TestProvider(items);
+        var service = new SpotlightSearchService([provider]);
+        var usage = new SpotlightUsageStore(_usagePath, () => DateTime.UtcNow);
+        using var vm = new SpotlightViewModel(service, usage);
+
+        for (int i = 0; i < 15; i++)
+        {
+            await vm.SearchAsync("f");
+            vm.CancelPendingSearch();
+        }
+        await Task.Delay(50);
+    }
+
     private sealed class TestProvider : ISpotlightProvider
     {
         private readonly SpotlightSearchItem[] _items;

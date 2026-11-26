@@ -1,13 +1,14 @@
 using System.Collections;
 using System.IO;
 using System.Runtime.InteropServices;
+using VNotch.Interop;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight.Providers;
 
 internal sealed partial class AppSearchProvider : ISpotlightProvider
 {
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_app_search_provider_classify_target(
         ReadOnlySpan<char> pathPtr, int pathLen,
         ReadOnlySpan<char> appIdPtr, int appIdLen,
@@ -15,7 +16,7 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
         byte existsOnDisk,
         out int outMode);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_app_search_provider_scan_start_menu(
         ReadOnlySpan<char> startMenuPtr,
         int startMenuLen,

@@ -121,7 +121,7 @@ public:
         return S_OK;
     }
 };
-inline vnotch::HandleRegistry<SurfaceCopy> copies;
+inline vnotch::ImmortalHandleRegistry<SurfaceCopy> copies;
 }
 VN_EXPORT HRESULT vn_webcam_gpu_create(IDirect3DDevice9Ex* device, int w, int h, int64_t* handle) noexcept {
     if (!device || !handle || w <= 0 || h <= 0 || w > 8192 || h > 8192) return E_INVALIDARG;

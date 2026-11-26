@@ -50,8 +50,8 @@ struct VolumeLease {
 };
 
 // Exports hold a registry lease while they use an object, so closing a handle on another thread cannot free it mid-call.
-vnotch::HandleRegistry<Snapshot> g_snapshots;
-vnotch::HandleRegistry<VolumeLease> g_leases;
+vnotch::ImmortalHandleRegistry<Snapshot> g_snapshots;
+vnotch::ImmortalHandleRegistry<VolumeLease> g_leases;
 
 
 std::wstring TakeString(LPWSTR text) {

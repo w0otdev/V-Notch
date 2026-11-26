@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using VNotch.Interop;
 using VNotch.Services;
 
 namespace VNotch.ViewModels;
@@ -61,7 +62,7 @@ public partial class AudioMixerViewModel : ObservableObject
         IconText = ((char)codepoint).ToString();
     }
 
-    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
+    [System.Runtime.InteropServices.LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_audio_mixer_select_icon_glyph(float volume, byte muted, out int out_codepoint);
 
     public void CacheSessionVolume(uint processId, float volume)

@@ -26,7 +26,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         {
             ready.SetResult(Dispatcher.CurrentDispatcher);
             Dispatcher.Run();
-        }) { Name = "VNotch clipboard reader", IsBackground = true };
+        })
+        { Name = "VNotch clipboard reader", IsBackground = true };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         return ready.Task;
@@ -596,28 +597,36 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException)
         { Report("clipboard.error"); }
     }
-    private async void SessionSwitch(object sender, SessionSwitchEventArgs e)
+    private void SessionSwitch(object sender, SessionSwitchEventArgs e)
     {
         if (!_disposed && e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.SessionLogoff)
-        {
-            try { await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap(); }
-            catch (OperationCanceledException) { /* Intentionally ignored. */ }
-        }
+            LockPersonalFromLifecycleEventAsync().SafeFireAndForget("CLIPBOARD-SESSION-LOCK");
     }
-    private async void PowerModeChanged(object sender, PowerModeChangedEventArgs e)
+
+    private void PowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
         if (!_disposed && e.Mode == PowerModes.Suspend)
-        {
-            try { await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap(); }
-            catch (OperationCanceledException) { /* Intentionally ignored. */ }
-        }
+            LockPersonalFromLifecycleEventAsync().SafeFireAndForget("CLIPBOARD-POWER-LOCK");
     }
+
+    private async Task LockPersonalFromLifecycleEventAsync()
+    {
+        try { await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap(); }
+        catch (OperationCanceledException) { /* Dispatcher shut down while locking personal vault. */ }
+    }
+
     private DateTime _nextHistoryPruneUtc = DateTime.UtcNow.AddHours(1);
     private bool _pruning;
-    private async void RetentionTick(object? sender, EventArgs e)
+
+    private void RetentionTick(object? sender, EventArgs e)
     {
         if (_pruning || _disposed) return;
         _pruning = true;
+        RunRetentionTickAsync().SafeFireAndForget("CLIPBOARD-RETENTION");
+    }
+
+    private async Task RunRetentionTickAsync()
+    {
         try
         {
             var now = DateTime.UtcNow;
@@ -629,8 +638,13 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException)
-        { Report("clipboard.error"); }
-        finally { _pruning = false; }
+        {
+            Report("clipboard.error");
+        }
+        finally
+        {
+            _pruning = false;
+        }
     }
     private static bool IsTemporaryScreenshotPath(string path)
     {
@@ -656,12 +670,13 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     {
         var paths = _clipboardExportPaths;
         _clipboardExportPaths = [];
-        if (paths.Length > 0) _ = ReleaseClipboardExportsAsync(paths);
+        if (paths.Length > 0)
+            ReleaseClipboardExportsAsync(paths).SafeFireAndForget("CLIPBOARD-EXPORT-CLEANUP");
     }
     private async Task ReleaseClipboardExportsAsync(string[] paths)
     {
         try { await Store.ReleasePersonalExportsAsync(paths); }
-        catch (ObjectDisposedException) { /* Intentionally ignored. */ }
+        catch (ObjectDisposedException) { /* Store already disposed during shutdown. */ }
     }
     private void ClearPersonalClipboard()
     {

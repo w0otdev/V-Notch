@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using VNotch.Windows;
 using Xunit;
 
@@ -21,4 +23,16 @@ public sealed class SpotifyLoginNavigationTests
     [InlineData(null, false)]
     public void LoginNavigation_RequiresAnHttpsSpotifyOrigin(string? value, bool allowed) =>
         Assert.Equal(allowed, SpotifyLoginWindow.IsAllowedNavigation(value));
+
+    [Fact]
+    public void LifecycleHandlersAvoidAsyncVoidAndCleanupFallbackTimer()
+    {
+        foreach (string name in new[] { "SpotifyLoginWindow_Loaded", "CoreWebView2_NavigationCompleted", "CookieTimer_Tick" })
+        {
+            var method = typeof(SpotifyLoginWindow).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Assert.Null(method.GetCustomAttribute<AsyncStateMachineAttribute>());
+        }
+
+        Assert.NotNull(typeof(SpotifyLoginWindow).GetField("_closeFallbackTimer", BindingFlags.Instance | BindingFlags.NonPublic));
+    }
 }

@@ -28,9 +28,13 @@ public partial class SettingsWindow
                 new() { Tag = NotchSettings.AutoBluetoothBatteryDeviceId, Content = Loc.Get("settings.batteryDevice.auto") }
             };
             foreach (var device in _batteryDevices)
-                choices.Add(new ComboBoxItem { Tag = device.Id, Content = device.IsConnected
-                    ? $"{device.Name} · {(device.HasReading ? $"{device.Percentage}%" : "—") }"
-                    : Loc.Get("settings.batteryDevice.unavailable", device.Name) });
+                choices.Add(new ComboBoxItem
+                {
+                    Tag = device.Id,
+                    Content = device.IsConnected
+                    ? $"{device.Name} · {(device.HasReading ? $"{device.Percentage}%" : "—")}"
+                    : Loc.Get("settings.batteryDevice.unavailable", device.Name)
+                });
             if (!choices.Any(choice => string.Equals(choice.Tag as string, selectedId, StringComparison.OrdinalIgnoreCase)))
                 choices.Add(new ComboBoxItem { Tag = selectedId, Content = Loc.Get("settings.batteryDevice.unavailable", selectedId) });
             BatteryDeviceCombo.ItemsSource = choices;
@@ -39,7 +43,13 @@ public partial class SettingsWindow
         finally { _isLoadingSettings = loading; }
     }
 
-    private async void BatteryDeviceCombo_DropDownOpened(object sender, EventArgs e)
+    private void BatteryDeviceCombo_DropDownOpened(object sender, EventArgs e)
+    {
+        if (_refreshingBatteryChoices) return;
+        RefreshBatteryDevicesAsync().SafeFireAndForget("SETTINGS-BATTERY");
+    }
+
+    private async Task RefreshBatteryDevicesAsync()
     {
         if (_refreshingBatteryChoices) return;
         _refreshingBatteryChoices = true;
@@ -47,6 +57,10 @@ public partial class SettingsWindow
         {
             var devices = await BluetoothBatteryService.Instance.GetDevicesAsync(forceRefresh: true);
             if (!_isClosing) PopulateBatterySources(devices);
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Warn("SETTINGS-BATTERY", $"Failed to refresh battery sources: {ex.Message}");
         }
         finally { _refreshingBatteryChoices = false; }
     }

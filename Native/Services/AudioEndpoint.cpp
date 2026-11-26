@@ -1,4 +1,5 @@
 #include "../vnotch_common.h"
+#include "../vnotch_com.h"
 #include <objbase.h>
 #include <mmdeviceapi.h>
 #include <string>
@@ -33,16 +34,6 @@ struct IPolicyConfig : IUnknown {
     virtual HRESULT STDMETHODCALLTYPE SetEndpointVisibility(PCWSTR, INT) = 0;
 };
 
-struct ComScope {
-    bool initialized;
-    ComScope() noexcept : initialized(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) {}
-    ComScope(const ComScope&) = delete;
-    ComScope& operator=(const ComScope&) = delete;
-    ~ComScope() {
-        if (initialized) CoUninitialize();
-    }
-};
-
 } // namespace vnotch::services::audio
 
 extern "C" {
@@ -59,18 +50,17 @@ VN_EXPORT int32_t __stdcall vn_audio_set_default_endpoint(
     *out_console_hr = *out_multimedia_hr = *out_communications_hr = static_cast<int32_t>(E_FAIL);
     try {
         std::wstring id(reinterpret_cast<const wchar_t*>(device_id), static_cast<size_t>(device_id_length));
-        audio::ComScope com;
-        audio::IPolicyConfig* policy = nullptr;
+        vnotch::ComScope com;
+        vnotch::ComPtr<audio::IPolicyConfig> policy;
         const HRESULT created = CoCreateInstance(audio::kPolicyConfigClient, nullptr, CLSCTX_ALL, audio::kPolicyConfigIid,
-                                                 reinterpret_cast<void**>(&policy));
-        if (FAILED(created) || policy == nullptr) {
+                                                 reinterpret_cast<void**>(policy.Put()));
+        if (FAILED(created) || !policy) {
             *out_console_hr = *out_multimedia_hr = *out_communications_hr = static_cast<int32_t>(created);
             return VN_ERR_FAIL;
         }
         *out_console_hr = static_cast<int32_t>(policy->SetDefaultEndpoint(id.c_str(), eConsole));
         *out_multimedia_hr = static_cast<int32_t>(policy->SetDefaultEndpoint(id.c_str(), eMultimedia));
         *out_communications_hr = static_cast<int32_t>(policy->SetDefaultEndpoint(id.c_str(), eCommunications));
-        policy->Release();
         return SUCCEEDED(static_cast<HRESULT>(*out_multimedia_hr)) ? VN_OK : VN_ERR_FAIL;
     } catch (...) {
         return VN_ERR_FAIL;

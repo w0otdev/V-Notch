@@ -2,31 +2,43 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Threading;
+using VNotch.Interop;
 using Windows.Devices.Enumeration;
 
 namespace VNotch.Services;
 
 public sealed partial class BluetoothMonitorService : IDisposable
 {
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private const string NativeDll = NativeAbi.LibraryName;
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_bluetooth_monitor_detect_device_type(
         ReadOnlySpan<char> namePtr,
         int nameLen,
         out int outType);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_bluetooth_monitor_extract_name_start(
         ReadOnlySpan<char> idPtr,
         int idLen,
         out int outStart);
 
     private const string LogTag = "BLUETOOTH";
+    internal const int MaxConsecutiveRestarts = 5;
+    private const int BaseRestartDelayMs = 500;
+    private const int MaxRestartDelayMs = 30_000;
 
     private DeviceWatcher? _watcher;
     private readonly ConcurrentDictionary<string, BluetoothDeviceInfo> _knownDevices = new();
     private readonly object _deviceChangeLock = new();
     private readonly Dispatcher _dispatcher;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
+    private readonly Action _restartAction;
+    private CancellationTokenSource? _restartCts;
+    private int _consecutiveRestarts;
     private volatile bool _disposed;
     private volatile bool _isInitialEnumerationComplete;
     public event EventHandler<BluetoothDeviceInfo>? DeviceConnected;
@@ -37,8 +49,18 @@ public sealed partial class BluetoothMonitorService : IDisposable
     }
 
     public BluetoothMonitorService(Dispatcher dispatcher)
+        : this(dispatcher, delayAsync: null, restartAction: null)
+    {
+    }
+
+    internal BluetoothMonitorService(
+        Dispatcher dispatcher,
+        Func<TimeSpan, CancellationToken, Task>? delayAsync,
+        Action? restartAction)
     {
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        _delayAsync = delayAsync ?? (static (delay, ct) => Task.Delay(delay, ct));
+        _restartAction = restartAction ?? Start;
     }
 
     public void Start()
@@ -80,23 +102,40 @@ public sealed partial class BluetoothMonitorService : IDisposable
             catch (Exception ex)
             {
                 RuntimeLog.Error(LogTag, ex, "Failed to start DeviceWatcher");
-                Stop();
+                StopCore(resetRestartCounter: false);
             }
         }
     }
 
-    public void Stop()
+    public void Stop() => StopCore(resetRestartCounter: true);
+
+    private void StopCore(bool resetRestartCounter)
     {
         DeviceWatcher? watcher;
         lock (_deviceChangeLock)
         {
-            watcher = _watcher;
-            _watcher = null;
-            _isInitialEnumerationComplete = false;
-            _knownDevices.Clear();
+            CancelPendingRestartLocked();
+            if (resetRestartCounter)
+                _consecutiveRestarts = 0;
+
+            watcher = DetachWatcherStateLocked();
             if (watcher == null) return;
         }
 
+        DetachAndStopWatcher(watcher);
+    }
+
+    private DeviceWatcher? DetachWatcherStateLocked()
+    {
+        DeviceWatcher? watcher = _watcher;
+        _watcher = null;
+        _isInitialEnumerationComplete = false;
+        _knownDevices.Clear();
+        return watcher;
+    }
+
+    private void DetachAndStopWatcher(DeviceWatcher watcher)
+    {
         try
         {
             watcher.Added -= Watcher_Added;
@@ -209,22 +248,120 @@ public sealed partial class BluetoothMonitorService : IDisposable
         {
             if (_disposed || sender == null || !ReferenceEquals(sender, _watcher)) return;
             _isInitialEnumerationComplete = true;
+            _consecutiveRestarts = 0;
             RuntimeLog.Log(LogTag, $"Initial enumeration complete. {_knownDevices.Count} device(s) connected.");
         }
     }
 
     private void Watcher_Stopped(DeviceWatcher sender, object args)
     {
-        if (_dispatcher.HasShutdownStarted) return;
+        if (_disposed || sender == null || _dispatcher.HasShutdownStarted) return;
         _dispatcher.BeginInvoke(() =>
         {
+            DeviceWatcher? stoppedWatcher;
+            TimeSpan delay;
+            CancellationTokenSource? restartCts;
             lock (_deviceChangeLock)
             {
                 if (_disposed || !ReferenceEquals(sender, _watcher)) return;
-                Stop();
-                Start();
+                stoppedWatcher = DetachWatcherStateLocked();
+                if (!TryPrepareRestartLocked(out delay, out restartCts))
+                    restartCts = null;
             }
+
+            if (stoppedWatcher != null)
+                DetachAndStopWatcher(stoppedWatcher);
+
+            if (restartCts != null)
+                ExecuteDelayedRestartAsync(delay, restartCts).SafeFireAndForget(LogTag);
         });
+    }
+
+    internal static TimeSpan ComputeRestartDelay(int attempt)
+    {
+        int exponent = Math.Clamp(attempt, 0, 10);
+        int delayMs = Math.Min(MaxRestartDelayMs, BaseRestartDelayMs * (1 << exponent));
+        return TimeSpan.FromMilliseconds(delayMs);
+    }
+
+    internal bool TryScheduleRestartForTest()
+    {
+        TimeSpan delay;
+        CancellationTokenSource? restartCts;
+        lock (_deviceChangeLock)
+        {
+            if (_disposed || !TryPrepareRestartLocked(out delay, out restartCts))
+                return false;
+        }
+
+        ExecuteDelayedRestartAsync(delay, restartCts!).SafeFireAndForget(LogTag);
+        return true;
+    }
+
+    private bool TryPrepareRestartLocked(out TimeSpan delay, out CancellationTokenSource? restartCts)
+    {
+        if (_disposed || _consecutiveRestarts >= MaxConsecutiveRestarts)
+        {
+            if (!_disposed && _consecutiveRestarts == MaxConsecutiveRestarts)
+                RuntimeLog.Warn(LogTag, $"DeviceWatcher stopped {MaxConsecutiveRestarts} consecutive times; pausing auto-restart.");
+
+            delay = TimeSpan.Zero;
+            restartCts = null;
+            return false;
+        }
+
+        delay = ComputeRestartDelay(_consecutiveRestarts);
+        _consecutiveRestarts++;
+        CancelPendingRestartLocked();
+        restartCts = new CancellationTokenSource();
+        _restartCts = restartCts;
+        return true;
+    }
+
+    private void CancelPendingRestartLocked()
+    {
+        var cts = _restartCts;
+        _restartCts = null;
+        if (cts == null) return;
+
+        try { cts.Cancel(); }
+        catch (ObjectDisposedException) { /* Already disposed by ExecuteDelayedRestartAsync. */ }
+    }
+
+    private async Task ExecuteDelayedRestartAsync(TimeSpan delay, CancellationTokenSource restartCts)
+    {
+        try
+        {
+            await _delayAsync(delay, restartCts.Token).ConfigureAwait(false);
+            if (_disposed || _dispatcher.HasShutdownStarted) return;
+
+            await _dispatcher.InvokeAsync(() =>
+            {
+                lock (_deviceChangeLock)
+                {
+                    if (_disposed || !ReferenceEquals(_restartCts, restartCts) || restartCts.IsCancellationRequested)
+                        return;
+
+                    _restartCts = null;
+                }
+
+                _restartAction();
+            }).Task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Explicit Stop() or Dispose() canceled the scheduled restart.
+        }
+        finally
+        {
+            lock (_deviceChangeLock)
+            {
+                if (ReferenceEquals(_restartCts, restartCts))
+                    _restartCts = null;
+            }
+
+            restartCts.Dispose();
+        }
     }
 
     private static BluetoothDeviceInfo? CreateDeviceInfo(DeviceInformation device)

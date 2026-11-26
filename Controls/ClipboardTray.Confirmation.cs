@@ -14,7 +14,8 @@ public sealed partial class ClipboardTray
     private int _deleteConfirmationCount;
     private bool _emptyTrayConfirmation;
 
-    internal async void EmptyTray_Click(object sender, RoutedEventArgs e) => await SafeAsync(ConfirmEmptyTrayAsync);
+    internal void EmptyTray_Click(object sender, RoutedEventArgs e)
+        => SafeAsync(ConfirmEmptyTrayAsync).SafeFireAndForget("CLIPBOARD-UI");
 
     internal Task ConfirmEmptyTrayAsync()
     {

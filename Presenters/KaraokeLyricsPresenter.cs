@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using VNotch.Interop;
 using VNotch.Services;
 
 namespace VNotch.Presenters;
@@ -27,7 +28,7 @@ internal sealed partial class KaraokeLyricsPresenter
         }
     }
 
-    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
+    [System.Runtime.InteropServices.LibraryImport(NativeAbi.LibraryName)]
     private static partial void vn_karaoke_progress(double position, ReadOnlySpan<double> starts,
         ReadOnlySpan<double> ends, Span<double> progress, int count);
 

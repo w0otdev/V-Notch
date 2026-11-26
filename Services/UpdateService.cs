@@ -7,13 +7,16 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
+using VNotch.Interop;
 
 namespace VNotch.Services;
 
 #pragma warning disable S1075 // Public GitHub Releases feed endpoint
 public sealed partial class UpdateService : IUpdateService, IDisposable
 {
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private const string NativeDll = NativeAbi.LibraryName;
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_update_service_try_parse_release_version(
         ReadOnlySpan<char> valuePtr,
         int valueLen,
@@ -25,7 +28,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         out int outPreLen,
         out byte outOk);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_update_service_compare_versions(
         ReadOnlySpan<char> leftPtr,
         int leftLen,
@@ -37,7 +40,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
     private const int CacheSchemaVersion = 3;
     private static readonly Uri GithubReleaseFeedUri = new("https://github.com/w0otdev/V-Notch/releases.atom");
 
-    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_update_parse_atom", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeDll, EntryPoint = "vn_update_parse_atom", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int ParseReleaseFeed(ReadOnlySpan<byte> data, int size, Span<char> output, int capacity, out int written);
     private const string UserAgent = "V-Notch-Updater";
     internal const string SetupName = "V-Notch-Setup.exe";
@@ -52,6 +55,8 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
     private const int HistoryPageSize = 12;
     private ConcurrentDictionary<int, (DateTime Loaded, ReleaseHistoryPage Page)> _historyPages = new();
     private readonly SemaphoreSlim _checkLock = new(1, 1);
+    private readonly object _disposeGate = new();
+    private readonly CancellationTokenSource _disposeCts = new();
     private string? _latestReleaseEtag;
     private UpdateInfo? _cachedLatestRelease;
     private IReadOnlyList<UpdateInfo>? _cachedAllReleases;
@@ -71,9 +76,25 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        lock (_disposeGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _disposeCts.Cancel();
+            _disposeCts.Dispose();
+        }
         if (_ownsHttpClient) _httpClient.Dispose();
+    }
+
+    private CancellationTokenSource? TryCreateLinkedTimeoutCts(TimeSpan timeout, CancellationToken callerToken = default)
+    {
+        lock (_disposeGate)
+        {
+            if (_disposed) return null;
+            var linked = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, callerToken);
+            linked.CancelAfter(timeout);
+            return linked;
+        }
     }
 
     internal UpdateService(HttpClient httpClient, UpdateSecurityPolicy securityPolicy,
@@ -102,11 +123,17 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
 
     public async Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false, bool forceRefresh = false)
     {
-        if (_disposed) return null;
+        using var linked = TryCreateLinkedTimeoutCts(TimeSpan.FromSeconds(30));
+        if (linked == null) return null;
+
         UpdateInfo? result = null;
-        await _checkLock.WaitAsync();
+        bool lockAcquired = false;
         try
         {
+            await _checkLock.WaitAsync(linked.Token).ConfigureAwait(false);
+            lockAcquired = true;
+            if (_disposed) return null;
+
             if (_cachedIncludesPrereleases != includePrereleases)
             {
                 _cachedIncludesPrereleases = includePrereleases;
@@ -123,14 +150,31 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
                 result = currentCached != null ? Clone(currentCached) : null;
                 return result;
             }
-            result = await CheckReleaseFeedAsync(includePrereleases).ConfigureAwait(false);
-            return result;
+            result = await CheckReleaseFeedAsync(includePrereleases, linked.Token).ConfigureAwait(false);
+            return _disposed ? null : result;
+        }
+        catch (OperationCanceledException) when (_disposed)
+        {
+            return null;
         }
         finally
         {
-            _checkLock.Release();
-            var handlers = UpdateCheckCompleted?.GetInvocationList();
-            if (handlers != null) { var arg = result != null ? Clone(result) : null; foreach (var d in handlers) { try { ((EventHandler<UpdateInfo?>)d)(this, arg); } catch (Exception ex) { RuntimeLog.Error(LogCategory, ex, "UpdateCheckCompleted handler threw"); } } }
+            if (lockAcquired)
+                _checkLock.Release();
+
+            if (!_disposed)
+            {
+                var handlers = UpdateCheckCompleted?.GetInvocationList();
+                if (handlers != null)
+                {
+                    var arg = result != null ? Clone(result) : null;
+                    foreach (var d in handlers)
+                    {
+                        try { ((EventHandler<UpdateInfo?>)d)(this, arg); }
+                        catch (Exception ex) { RuntimeLog.Error(LogCategory, ex, "UpdateCheckCompleted handler threw"); }
+                    }
+                }
+            }
         }
     }
 
@@ -167,11 +211,13 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
 
     private async Task SaveCheckCacheAsync()
     {
-        if (_cachePath == null) return;
+        if (_cachePath == null || _disposed) return;
         string temp = _cachePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_cachePath))!);
+            string? cacheDir = Path.GetDirectoryName(Path.GetFullPath(_cachePath));
+            if (!string.IsNullOrEmpty(cacheDir))
+                Directory.CreateDirectory(cacheDir);
             var cache = new CheckCache(_lastCheckUtc, _retryAfterUtc, _latestReleaseEtag,
                 _cachedIncludesPrereleases, _cachedLatestRelease, CacheSchemaVersion);
             await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(cache)).ConfigureAwait(false);
@@ -201,7 +247,8 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
 
     public async Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync()
     {
-        if (_disposed) return Array.Empty<UpdateInfo>();
+        using var linked = TryCreateLinkedTimeoutCts(TimeSpan.FromSeconds(30));
+        if (linked == null) return Array.Empty<UpdateInfo>();
         var now = DateTime.UtcNow;
         if (_cachedAllReleases != null && (now < _retryAfterUtc || now - _lastAllReleasesCheckUtc < MinRefreshInterval))
         {
@@ -209,18 +256,21 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         }
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var releases = new List<UpdateInfo>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
             for (int page = 1; ; page++)
             {
-                var batch = await GetChangelogPageAsync(page, timeout.Token).ConfigureAwait(false);
+                var batch = await GetChangelogPageAsync(page, linked.Token).ConfigureAwait(false);
                 releases.AddRange(batch.Releases.Where(r => seen.Add(r.ReleaseTag ?? r.Version)));
                 if (!batch.HasMore) break;
             }
             _cachedAllReleases = releases;
             _lastAllReleasesCheckUtc = DateTime.UtcNow;
             return CloneReleaseList(releases);
+        }
+        catch (OperationCanceledException) when (_disposed)
+        {
+            return Array.Empty<UpdateInfo>();
         }
         catch (Exception ex)
         {
@@ -236,12 +286,11 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
         token.ThrowIfCancellationRequested();
-        if (_disposed) return new([], false);
         var pages = Volatile.Read(ref _historyPages);
         if (pages.TryGetValue(page, out var cached) && DateTime.UtcNow - cached.Loaded < MinRefreshInterval)
             return new(CloneReleaseList(cached.Page.Releases), cached.Page.HasMore);
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        using var timeout = TryCreateLinkedTimeoutCts(TimeSpan.FromSeconds(30), token);
+        if (timeout == null) return new([], false);
         ReleaseHistoryPage result;
         try
         {
@@ -277,13 +326,12 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         return copy;
     }
 
-    private async Task<UpdateInfo?> CheckReleaseFeedAsync(bool includePrereleases)
+    private async Task<UpdateInfo?> CheckReleaseFeedAsync(bool includePrereleases, CancellationToken cancellationToken)
     {
         var cached = Volatile.Read(ref _cachedLatestRelease);
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var (allReleases, etag) = await FetchReleaseHistoryAsync(cached != null ? _latestReleaseEtag : null, timeout.Token).ConfigureAwait(false);
+            var (allReleases, etag) = await FetchReleaseHistoryAsync(cached != null ? _latestReleaseEtag : null, cancellationToken).ConfigureAwait(false);
             var now = DateTime.UtcNow;
             if (allReleases == null)
             {
@@ -329,7 +377,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
                         try
                         {
                             // Feed history alone cannot authorize an installer. Verify its signed metadata first.
-                            await DownloadVerifiedManifestAsync(candidate, timeout.Token).ConfigureAwait(false);
+                            await DownloadVerifiedManifestAsync(candidate, cancellationToken).ConfigureAwait(false);
                             candidate.IsNewerVersion = true;
                             update = candidate;
                             break;
@@ -351,6 +399,10 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             Volatile.Write(ref _cachedLatestRelease, update);
             await SaveCheckCacheAsync().ConfigureAwait(false);
             return update != null ? Clone(update) : null;
+        }
+        catch (OperationCanceledException) when (_disposed)
+        {
+            return null;
         }
         catch (Exception ex)
         {

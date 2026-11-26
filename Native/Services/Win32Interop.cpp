@@ -5,6 +5,7 @@
 
 #pragma comment(lib, "psapi.lib")
 #pragma comment(lib, "shcore.lib")
+#pragma comment(lib, "synchronization.lib")
 #pragma comment(lib, "winmm.lib")
 #include <shellscalingapi.h>
 #include <mmsystem.h>
@@ -114,14 +115,18 @@ bool HostHasShellView(HWND host) noexcept {
 
 HWND GetCachedDesktopHost() noexcept {
     AcquireSRWLockExclusive(&g_desktop_lock);
-    HWND result = g_desktop_host;
-    if (!HostHasShellView(result)) {
-        result = nullptr;
-        EnumWindows(FindDesktopHostProc, reinterpret_cast<LPARAM>(&result));
-        g_desktop_host = result;
-    }
+    HWND cached = g_desktop_host;
     ReleaseSRWLockExclusive(&g_desktop_lock);
-    return result;
+    if (HostHasShellView(cached)) {
+        return cached;
+    }
+
+    HWND discovered = nullptr;
+    EnumWindows(FindDesktopHostProc, reinterpret_cast<LPARAM>(&discovered));
+    AcquireSRWLockExclusive(&g_desktop_lock);
+    g_desktop_host = discovered;
+    ReleaseSRWLockExclusive(&g_desktop_lock);
+    return discovered;
 }
 
 inline HWND NotTopmost() noexcept {
@@ -134,9 +139,12 @@ inline HWND NotTopmost() noexcept {
 constexpr int kHookSlots = 4;
 
 struct HookSlot {
+    SRWLOCK lock = SRWLOCK_INIT;
     std::atomic<HHOOK> hook{nullptr};
     std::atomic<KeyboardHookCallback> callback{nullptr};
     std::atomic<int64_t> context{0};
+    std::atomic<int32_t> in_flight{0};
+    std::atomic<DWORD> active_thread{0};
 };
 
 HookSlot g_hook_slots[kHookSlots];
@@ -145,17 +153,43 @@ SRWLOCK g_hook_lock = SRWLOCK_INIT;
 template <int N>
 LRESULT CALLBACK KeyboardThunk(int code, WPARAM message, LPARAM data) noexcept {
     HookSlot& slot = g_hook_slots[N];
+    HHOOK next_hook = nullptr;
+    KeyboardHookCallback callback = nullptr;
+    int64_t context = 0;
+    DWORD previous_thread = 0;
+    bool entered = false;
+
     if (code >= 0 && data != 0) {
-        const KeyboardHookCallback callback = slot.callback.load(std::memory_order_acquire);
+        AcquireSRWLockShared(&slot.lock);
+        next_hook = slot.hook.load(std::memory_order_relaxed);
+        callback = slot.callback.load(std::memory_order_relaxed);
+        context = slot.context.load(std::memory_order_relaxed);
         if (callback != nullptr) {
-            const auto* key = reinterpret_cast<const KBDLLHOOKSTRUCT*>(data);
-            const VnKeyboardHookEvent event{
-                key->vkCode, key->scanCode, key->flags, key->time,
-                static_cast<int64_t>(key->dwExtraInfo), static_cast<int32_t>(message)};
-            if (callback(slot.context.load(std::memory_order_relaxed), &event) != 0) return 1;
+            slot.in_flight.fetch_add(1, std::memory_order_acq_rel);
+            previous_thread = slot.active_thread.exchange(GetCurrentThreadId(), std::memory_order_acq_rel);
+            entered = true;
+        }
+        ReleaseSRWLockShared(&slot.lock);
+    } else {
+        next_hook = slot.hook.load(std::memory_order_acquire);
+    }
+
+    LRESULT handled = 0;
+    if (entered) {
+        const auto* key = reinterpret_cast<const KBDLLHOOKSTRUCT*>(data);
+        const VnKeyboardHookEvent event{
+            key->vkCode, key->scanCode, key->flags, key->time,
+            static_cast<int64_t>(key->dwExtraInfo), static_cast<int32_t>(message)};
+        handled = callback(context, &event) != 0 ? 1 : 0;
+
+        slot.active_thread.store(previous_thread, std::memory_order_release);
+        if (slot.in_flight.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            WakeByAddressAll(&slot.in_flight);
         }
     }
-    return CallNextHookEx(slot.hook.load(std::memory_order_acquire), code, message, data);
+
+    if (handled != 0) return 1;
+    return CallNextHookEx(next_hook, code, message, data);
 }
 
 constexpr HOOKPROC kThunks[kHookSlots] = {
@@ -164,9 +198,12 @@ constexpr HOOKPROC kThunks[kHookSlots] = {
 // ---- Foreground WinEvent hook slots (EVENT_SYSTEM_FOREGROUND, out-of-context) ----
 
 struct EventSlot {
+    SRWLOCK lock = SRWLOCK_INIT;
     std::atomic<HWINEVENTHOOK> hook{nullptr};
     std::atomic<ForegroundHookCallback> callback{nullptr};
     std::atomic<int64_t> context{0};
+    std::atomic<int32_t> in_flight{0};
+    std::atomic<DWORD> active_thread{0};
 };
 
 constexpr int kEventSlots = 8;
@@ -176,9 +213,25 @@ SRWLOCK g_event_lock = SRWLOCK_INIT;
 template <int N>
 void CALLBACK ForegroundThunk(HWINEVENTHOOK, DWORD event_type, HWND hwnd, LONG, LONG, DWORD, DWORD) noexcept {
     EventSlot& slot = g_event_slots[N];
-    const ForegroundHookCallback callback = slot.callback.load(std::memory_order_acquire);
-    if (callback != nullptr)
-        callback(slot.context.load(std::memory_order_relaxed), event_type, FromHandle(hwnd));
+    ForegroundHookCallback callback = nullptr;
+    int64_t context = 0;
+    DWORD previous_thread = 0;
+
+    AcquireSRWLockShared(&slot.lock);
+    callback = slot.callback.load(std::memory_order_relaxed);
+    context = slot.context.load(std::memory_order_relaxed);
+    if (callback != nullptr) {
+        slot.in_flight.fetch_add(1, std::memory_order_acq_rel);
+        previous_thread = slot.active_thread.exchange(GetCurrentThreadId(), std::memory_order_acq_rel);
+    }
+    ReleaseSRWLockShared(&slot.lock);
+
+    if (callback == nullptr) return;
+    callback(context, event_type, FromHandle(hwnd));
+    slot.active_thread.store(previous_thread, std::memory_order_release);
+    if (slot.in_flight.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+        WakeByAddressAll(&slot.in_flight);
+    }
 }
 
 constexpr WINEVENTPROC kEventThunks[kEventSlots] = {
@@ -504,17 +557,25 @@ VN_EXPORT int32_t __stdcall vn_win32_keyboard_hook_install(
     AcquireSRWLockExclusive(&svc::win32::g_hook_lock);
     for (int32_t i = 0; i < svc::win32::kHookSlots; ++i) {
         svc::win32::HookSlot& slot = svc::win32::g_hook_slots[i];
-        if (slot.hook.load() != nullptr) continue;
-        slot.context.store(context);
-        slot.callback.store(callback, std::memory_order_release);
+        if (slot.hook.load(std::memory_order_acquire) != nullptr ||
+            slot.in_flight.load(std::memory_order_acquire) != 0) continue;
+        AcquireSRWLockExclusive(&slot.lock);
+        slot.context.store(context, std::memory_order_relaxed);
+        slot.callback.store(callback, std::memory_order_relaxed);
+        ReleaseSRWLockExclusive(&slot.lock);
         SetLastError(0);
         HHOOK hook = SetWindowsHookExW(WH_KEYBOARD_LL, svc::win32::kThunks[i], GetModuleHandleW(nullptr), 0);
         if (hook == nullptr) {
             if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
-            slot.callback.store(nullptr);
+            AcquireSRWLockExclusive(&slot.lock);
+            slot.callback.store(nullptr, std::memory_order_relaxed);
+            slot.context.store(0, std::memory_order_relaxed);
+            ReleaseSRWLockExclusive(&slot.lock);
             break;
         }
+        AcquireSRWLockExclusive(&slot.lock);
         slot.hook.store(hook, std::memory_order_release);
+        ReleaseSRWLockExclusive(&slot.lock);
         if (out_last_error) *out_last_error = 0;
         *out_slot = i;
         result = VN_OK;
@@ -526,14 +587,26 @@ VN_EXPORT int32_t __stdcall vn_win32_keyboard_hook_install(
 
 VN_EXPORT int32_t __stdcall vn_win32_keyboard_hook_uninstall(int32_t slot_index) noexcept {
     if (slot_index < 0 || slot_index >= svc::win32::kHookSlots) return VN_ERR_INVALID_ARG;
-    AcquireSRWLockExclusive(&svc::win32::g_hook_lock);
     svc::win32::HookSlot& slot = svc::win32::g_hook_slots[slot_index];
-    HHOOK hook = slot.hook.load();
-    slot.callback.store(nullptr, std::memory_order_release);
-    int32_t result = VN_OK;
-    if (hook != nullptr) result = w32::Status(UnhookWindowsHookEx(hook));
-    slot.hook.store(nullptr, std::memory_order_release);
+    AcquireSRWLockExclusive(&svc::win32::g_hook_lock);
+    HHOOK hook = nullptr;
+    {
+        AcquireSRWLockExclusive(&slot.lock);
+        hook = slot.hook.load(std::memory_order_relaxed);
+        slot.callback.store(nullptr, std::memory_order_relaxed);
+        slot.context.store(0, std::memory_order_relaxed);
+        slot.hook.store(nullptr, std::memory_order_relaxed);
+        ReleaseSRWLockExclusive(&slot.lock);
+    }
+    const int32_t result = hook != nullptr ? w32::Status(UnhookWindowsHookEx(hook)) : VN_OK;
     ReleaseSRWLockExclusive(&svc::win32::g_hook_lock);
+
+    const DWORD self_tid = GetCurrentThreadId();
+    for (;;) {
+        int32_t active = slot.in_flight.load(std::memory_order_acquire);
+        if (active == 0 || slot.active_thread.load(std::memory_order_acquire) == self_tid) break;
+        WaitOnAddress(&slot.in_flight, &active, sizeof(active), INFINITE);
+    }
     return result;
 }
 
@@ -547,17 +620,25 @@ VN_EXPORT int32_t __stdcall vn_win32_win_event_hook_install(
     AcquireSRWLockExclusive(&svc::win32::g_event_lock);
     for (int32_t i = 0; i < svc::win32::kEventSlots; ++i) {
         svc::win32::EventSlot& slot = svc::win32::g_event_slots[i];
-        if (slot.hook.load() != nullptr) continue;
-        slot.context.store(context);
-        slot.callback.store(callback, std::memory_order_release);
+        if (slot.hook.load(std::memory_order_acquire) != nullptr ||
+            slot.in_flight.load(std::memory_order_acquire) != 0) continue;
+        AcquireSRWLockExclusive(&slot.lock);
+        slot.context.store(context, std::memory_order_relaxed);
+        slot.callback.store(callback, std::memory_order_relaxed);
+        ReleaseSRWLockExclusive(&slot.lock);
         HWINEVENTHOOK hook = SetWinEventHook(
             event_min, event_max, nullptr,
             svc::win32::kEventThunks[i], 0, 0, WINEVENT_OUTOFCONTEXT);
         if (hook == nullptr) {
-            slot.callback.store(nullptr);
+            AcquireSRWLockExclusive(&slot.lock);
+            slot.callback.store(nullptr, std::memory_order_relaxed);
+            slot.context.store(0, std::memory_order_relaxed);
+            ReleaseSRWLockExclusive(&slot.lock);
             break;
         }
+        AcquireSRWLockExclusive(&slot.lock);
         slot.hook.store(hook, std::memory_order_release);
+        ReleaseSRWLockExclusive(&slot.lock);
         *out_slot = i;
         result = VN_OK;
         break;
@@ -568,15 +649,28 @@ VN_EXPORT int32_t __stdcall vn_win32_win_event_hook_install(
 
 VN_EXPORT int32_t __stdcall vn_win32_win_event_hook_uninstall(int32_t slot_index) noexcept {
     if (slot_index < 0 || slot_index >= svc::win32::kEventSlots) return VN_ERR_INVALID_ARG;
-    AcquireSRWLockExclusive(&svc::win32::g_event_lock);
     svc::win32::EventSlot& slot = svc::win32::g_event_slots[slot_index];
-    HWINEVENTHOOK hook = slot.hook.load();
+    AcquireSRWLockExclusive(&svc::win32::g_event_lock);
+    HWINEVENTHOOK hook = nullptr;
+    {
+        AcquireSRWLockExclusive(&slot.lock);
+        hook = slot.hook.load(std::memory_order_relaxed);
+        slot.callback.store(nullptr, std::memory_order_relaxed);
+        slot.context.store(0, std::memory_order_relaxed);
+        ReleaseSRWLockExclusive(&slot.lock);
+    }
     const int32_t result = hook ? w32::Status(UnhookWinEvent(hook)) : VN_OK;
     if (result == VN_OK) {
-        slot.callback.store(nullptr, std::memory_order_release);
         slot.hook.store(nullptr, std::memory_order_release);
     }
     ReleaseSRWLockExclusive(&svc::win32::g_event_lock);
+
+    const DWORD self_tid = GetCurrentThreadId();
+    for (;;) {
+        int32_t active = slot.in_flight.load(std::memory_order_acquire);
+        if (active == 0 || slot.active_thread.load(std::memory_order_acquire) == self_tid) break;
+        WaitOnAddress(&slot.in_flight, &active, sizeof(active), INFINITE);
+    }
     return result;
 }
 

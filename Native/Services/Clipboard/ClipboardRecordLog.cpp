@@ -23,18 +23,37 @@ struct Handle {
     Handle() = default;
     explicit Handle(HANDLE handle) noexcept : value(handle) {}
     Handle(const Handle&) = delete;
+    Handle& operator=(const Handle&) = delete;
     ~Handle() { Close(); }
     void Close() noexcept { if (value && value != INVALID_HANDLE_VALUE) CloseHandle(value); value = INVALID_HANDLE_VALUE; }
     explicit operator bool() const noexcept { return value && value != INVALID_HANDLE_VALUE; }
 };
 struct SecretBuffer {
     std::vector<uint8_t> bytes;
+    SecretBuffer() = default;
+    SecretBuffer(const SecretBuffer&) = delete;
+    SecretBuffer& operator=(const SecretBuffer&) = delete;
     ~SecretBuffer() { if (!bytes.empty()) SecureZeroMemory(bytes.data(), bytes.size()); }
 };
-struct Algorithm { BCRYPT_ALG_HANDLE value = nullptr; ~Algorithm() { if (value) BCryptCloseAlgorithmProvider(value, 0); } };
-struct Key { BCRYPT_KEY_HANDLE value = nullptr; ~Key() { if (value) BCryptDestroyKey(value); } };
+struct Algorithm {
+    BCRYPT_ALG_HANDLE value = nullptr;
+    Algorithm() = default;
+    Algorithm(const Algorithm&) = delete;
+    Algorithm& operator=(const Algorithm&) = delete;
+    ~Algorithm() { if (value) BCryptCloseAlgorithmProvider(value, 0); }
+};
+struct Key {
+    BCRYPT_KEY_HANDLE value = nullptr;
+    Key() = default;
+    Key(const Key&) = delete;
+    Key& operator=(const Key&) = delete;
+    ~Key() { if (value) BCryptDestroyKey(value); }
+};
 struct DpapiBlob {
     DATA_BLOB value{};
+    DpapiBlob() = default;
+    DpapiBlob(const DpapiBlob&) = delete;
+    DpapiBlob& operator=(const DpapiBlob&) = delete;
     ~DpapiBlob() { if (value.pbData) { SecureZeroMemory(value.pbData, value.cbData); LocalFree(value.pbData); } }
 };
 void ReadExactAt(HANDLE file, uint64_t offset, uint8_t* dst, size_t count) {
@@ -359,7 +378,7 @@ struct Context {
     }
 
 };
-vnotch::HandleRegistry<Context> contexts;
+vnotch::ImmortalHandleRegistry<Context> contexts;
 }
 
 VN_EXPORT int32_t __stdcall vn_clipboard_record_open(const wchar_t* root, int32_t length, int64_t* handle) noexcept {

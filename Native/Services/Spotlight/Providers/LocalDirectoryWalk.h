@@ -1,9 +1,12 @@
 #pragma once
 #include "vnotch_common.h"
 #include "Platform/DirectoryChangeStamp.h"
+#include <cstddef>
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <new>
+#include <type_traits>
 #include <unordered_map>
 
 namespace vnotch::services::localfiles {
@@ -83,7 +86,29 @@ private:
         }
     }
 };
-inline DirectoryCache directoryCache;
+
+// Process-lifetime cache whose storage is intentionally never destroyed on DLL_PROCESS_DETACH,
+// preventing mutex and FindFirstChangeNotification cleanup under OS Loader Lock.
+class ImmortalDirectoryCache final {
+public:
+    ImmortalDirectoryCache() noexcept {
+        ::new (static_cast<void*>(storage_)) DirectoryCache();
+    }
+    ~ImmortalDirectoryCache() = default;
+    ImmortalDirectoryCache(const ImmortalDirectoryCache&) = delete;
+    ImmortalDirectoryCache& operator=(const ImmortalDirectoryCache&) = delete;
+
+    DirectoryCache& Get() noexcept {
+        return *std::launder(reinterpret_cast<DirectoryCache*>(storage_));
+    }
+
+private:
+    alignas(DirectoryCache) std::byte storage_[sizeof(DirectoryCache)]{};
+};
+
+static_assert(std::is_trivially_destructible_v<ImmortalDirectoryCache>);
+inline ImmortalDirectoryCache g_directory_cache_storage;
+inline DirectoryCache& GetDirectoryCache() noexcept { return g_directory_cache_storage.Get(); }
 
 struct Walk {
     std::deque<std::wstring> pending;
@@ -97,12 +122,17 @@ struct Walk {
     WIN32_FIND_DATAW data{};
     bool haveFirst = false;
     explicit Walk(const std::wstring& root) { pending.push_back(root); }
+    Walk(const Walk&) = delete;
+    Walk& operator=(const Walk&) = delete;
+    Walk(Walk&&) = delete;
+    Walk& operator=(Walk&&) = delete;
     ~Walk() { if (cursor != INVALID_HANDLE_VALUE) FindClose(cursor); }
     bool Done() const noexcept { return cursor == INVALID_HANDLE_VALUE && !ticket.entries && pending.empty(); }
 
     // The returned entry stays alive until the next Next() call. Cached names
     // and normalized text are borrowed instead of copied for every query.
     const DirectoryEntry* Next() {
+        auto& directoryCache = GetDirectoryCache();
         if (ticket.entries) {
             if (cachedIndex < ticket.entries->size()) return &(*ticket.entries)[cachedIndex++];
             ticket = {};

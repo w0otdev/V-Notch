@@ -118,7 +118,8 @@ public partial class SpotlightWindow
         await _chatStore.FlushAsync().ConfigureAwait(false);
     }
 
-    private async void AiHistory_Click(object sender, RoutedEventArgs e) => await TransitionAiPageAsync(ToggleAiHistoryPage);
+    private void AiHistory_Click(object sender, RoutedEventArgs e) =>
+        TransitionAiPageAsync(ToggleAiHistoryPage).SafeFireAndForget("SPOTLIGHT-CHAT");
 
     private void ToggleAiHistoryPage()
     {
@@ -282,50 +283,63 @@ public partial class SpotlightWindow
         System.Windows.Automation.AutomationProperties.SetName(delete, deleteLabel);
         Grid.SetColumn(delete, 2);
 
-        delete.Click += async (_, args) =>
+        delete.Click += (_, args) =>
         {
             args.Handled = true;
-            if (!_settings.SaveAiChatHistory || !card.IsHitTestVisible) return;
-            card.IsHitTestVisible = false;
-            try
-            {
-                await _chatSession.FlushAsync();
-                await _chatStore.DeleteAsync(chat.Id);
-                if (chat.Id == _chatId)
-                {
-                    _aiHistory.Clear(); _messageOffset = 0; _chatId = Guid.NewGuid().ToString("N");
-                    SearchBox.Clear(); RenderAiHistory();
-                }
-                await LoadHistoryPageAsync(_historyPageOffset);
-            }
-            catch (Exception ex) { card.IsHitTestVisible = true; ReportChatFailure(ex); }
+            DeleteHistoryChatAsync(card, chat).SafeFireAndForget("SPOTLIGHT-CHAT");
         };
         grid.Children.Add(delete);
         card.Child = grid;
         card.MouseEnter += (_, _) => card.Background = AiHistoryCardHoverBrush;
         card.MouseLeave += (_, _) => card.Background = AiHistoryCardIdleBrush;
-        async Task OpenChat()
-        {
-            if (!card.IsHitTestVisible) return;
-            card.IsHitTestVisible = false;
-            int generation = _historyGeneration;
-            try
-            {
-                var saved = await _chatStore.LoadAsync(chat.Id);
-                if (saved == null || _allowClose || generation != _historyGeneration || !_settings.SaveAiChatHistory) return;
-                await TransitionAiPageAsync(() =>
-                {
-                    RestoreChat(saved);
-                    SearchBox.Text = PopTrailingUnfinishedUserTurn() ?? saved.Draft;
-                    CloseAiHistory(); RenderAiHistory(); RefreshAiPanel(); SetAiStatus("spotlight.ai.hint"); SearchBox.Focus();
-                });
-            }
-            catch (Exception ex) { ReportChatFailure(ex); }
-            finally { card.IsHitTestVisible = true; }
-        }
-        open.Click += async (_, args) => { args.Handled = true; await OpenChat(); };
-        card.MouseLeftButtonUp += async (_, args) => { args.Handled = true; await OpenChat(); };
+        open.Click += (_, args) => { args.Handled = true; OpenHistoryChatAsync(card, chat).SafeFireAndForget("SPOTLIGHT-CHAT"); };
+        card.MouseLeftButtonUp += (_, args) => { args.Handled = true; OpenHistoryChatAsync(card, chat).SafeFireAndForget("SPOTLIGHT-CHAT"); };
         return card;
+    }
+
+    private async Task DeleteHistoryChatAsync(Border card, ChatSummary chat)
+    {
+        if (!_settings.SaveAiChatHistory || !card.IsHitTestVisible) return;
+        card.IsHitTestVisible = false;
+        try
+        {
+            await _chatSession.FlushAsync();
+            await _chatStore.DeleteAsync(chat.Id);
+            if (chat.Id == _chatId)
+            {
+                _aiHistory.Clear();
+                _messageOffset = 0;
+                _chatId = Guid.NewGuid().ToString("N");
+                SearchBox.Clear();
+                RenderAiHistory();
+            }
+            await LoadHistoryPageAsync(_historyPageOffset);
+        }
+        catch (Exception ex) { card.IsHitTestVisible = true; ReportChatFailure(ex); }
+    }
+
+    private async Task OpenHistoryChatAsync(Border card, ChatSummary chat)
+    {
+        if (!card.IsHitTestVisible) return;
+        card.IsHitTestVisible = false;
+        int generation = _historyGeneration;
+        try
+        {
+            var saved = await _chatStore.LoadAsync(chat.Id);
+            if (saved == null || _allowClose || generation != _historyGeneration || !_settings.SaveAiChatHistory) return;
+            await TransitionAiPageAsync(() =>
+            {
+                RestoreChat(saved);
+                SearchBox.Text = PopTrailingUnfinishedUserTurn() ?? saved.Draft;
+                CloseAiHistory();
+                RenderAiHistory();
+                RefreshAiPanel();
+                SetAiStatus("spotlight.ai.hint");
+                SearchBox.Focus();
+            });
+        }
+        catch (Exception ex) { ReportChatFailure(ex); }
+        finally { card.IsHitTestVisible = true; }
     }
 
     private async Task LoadTranscriptPageAsync(int before)

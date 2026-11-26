@@ -1,13 +1,14 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using VNotch.Interop;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
 internal sealed partial class SpotlightLauncher
 {
-    private const string NativeDll = "VNotch.Native.dll";
+    private const string NativeDll = NativeAbi.LibraryName;
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_launcher_classify_system_action(

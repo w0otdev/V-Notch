@@ -14,6 +14,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using VNotch.Controllers;
 using VNotch.Controls;
+using VNotch.Interop;
 using VNotch.Models;
 using VNotch.Modules;
 using VNotch.Presenters;
@@ -44,7 +45,7 @@ public partial class SettingsWindow
         public int Score;
     }
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_settings_search_normalize_row(
         ReadOnlySpan<char> titlePtr,
         int titleLen,
@@ -57,7 +58,7 @@ public partial class SettingsWindow
         out VnSettingsSearchRowSpan outSpan,
         out int outArenaLen);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_settings_search_evaluate_batch(
         ReadOnlySpan<char> arenaPtr,
         int arenaLen,

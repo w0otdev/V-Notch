@@ -1,15 +1,19 @@
 using System;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using VNotch.Interop;
 
 namespace VNotch.Services;
 
 public static partial class InputMonitorService
 {
+    private const string NativeDll = NativeAbi.LibraryName;
     private const int WM_INPUT = 0x00FF;
+    private static readonly TimeSpan WorkerTimeout = TimeSpan.FromSeconds(2);
 
 #pragma warning disable S101 // Win32 POINT struct name
     [StructLayout(LayoutKind.Sequential)]
@@ -20,17 +24,17 @@ public static partial class InputMonitorService
         public int y;
     }
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_input_monitor_is_left_button_down(
         ReadOnlySpan<byte> packetPtr,
         int packetLen,
         int ptrSize,
         out byte outIsDown);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_input_register_raw_mouse(long hwnd, byte remove, out int lastError);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_input_read_left_click(long rawInput, out byte leftDown, out int x, out int y);
 
     [LibraryImport("user32.dll")]
@@ -140,7 +144,10 @@ public static partial class InputMonitorService
         { IsBackground = true, Name = "VNotch raw mouse" };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        if (ready.Task.GetAwaiter().GetResult()) _source = source;
+        if (ready.Task.Wait(WorkerTimeout) && ready.Task.Result)
+            _source = source;
+        else
+            RuntimeLog.Warn("INPUT", "Timed out waiting for raw mouse input worker.");
     }
 
     public static void Stop()
@@ -160,15 +167,24 @@ public static partial class InputMonitorService
         var dispatcher = _inputDispatcher;
         _inputDispatcher = null;
         if (dispatcher == null || !dispatcher.Thread.IsAlive || dispatcher.HasShutdownStarted) return;
-        // Unregister before another Start can register its window. No thread join
-        // or hardware callback is needed on the WPF dispatcher.
-        dispatcher.Invoke(() =>
+        // Unregister before another Start can register its window; bound the wait so a stalled worker cannot wedge shutdown.
+        try
         {
-            vn_input_register_raw_mouse(0, 1, out _);
-            _inputWindow?.Dispose();
-            _inputWindow = null;
-            dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
-        }, DispatcherPriority.Send);
+            bool completed = dispatcher.InvokeAsync(() =>
+            {
+                vn_input_register_raw_mouse(0, 1, out _);
+                _inputWindow?.Dispose();
+                _inputWindow = null;
+                dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+            }, DispatcherPriority.Send).Task.Wait(WorkerTimeout);
+
+            if (!completed)
+                RuntimeLog.Warn("INPUT", "Timed out waiting for raw mouse input worker shutdown.");
+        }
+        catch (AggregateException ex) when (ex.InnerExceptions.All(static inner => inner is OperationCanceledException))
+        {
+            // Worker dispatcher already shut down concurrently.
+        }
     }
 
     internal static void DispatchClick(POINT point, uint timestamp)

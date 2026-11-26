@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using VNotch.Interop;
 using VNotch.Models;
 using VNotch.Services;
 
@@ -174,7 +175,7 @@ public partial class ProgressViewModel : ObservableObject
         return len > 0 ? new string(buf, 0, len) : "0:00";
     }
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_progress_interpolate_ticks(
         long last_position_ticks,
         long duration_ticks,
@@ -186,7 +187,7 @@ public partial class ProgressViewModel : ObservableObject
         out long out_display_ticks,
         out double out_ratio);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static unsafe partial int vn_progress_format_time(
         long time_ticks, char* out_buf, int buf_cap, out int out_len);
 }

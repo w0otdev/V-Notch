@@ -2,6 +2,8 @@ using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+using VNotch.Interop;
 using VNotch.Models;
 
 namespace VNotch.Services.Clipboard;
@@ -10,25 +12,47 @@ namespace VNotch.Services.Clipboard;
 // live in native flat storage. Every operation is protected by the store's _entriesLock.
 internal sealed partial class NativeClipboardEntryIndex : IEnumerable<KeyValuePair<Guid, ClipboardEntry>>, IDisposable
 {
-    private sealed class IndexHandle : SafeHandle
+    private sealed class IndexHandle : SafeHandleZeroOrMinusOneIsInvalid
     {
-        internal IndexHandle(long value) : base(IntPtr.Zero, true) => SetHandle((nint)value);
-        public override bool IsInvalid => handle == IntPtr.Zero;
-        protected override bool ReleaseHandle() => vn_clipboard_index_close((long)handle) == 0;
+        public IndexHandle() : base(true) { }
+
+        protected override bool ReleaseHandle() =>
+            vn_clipboard_index_close(handle.ToInt64()) == (int)NativeStatus.Ok;
     }
+
     private readonly List<ClipboardEntry> _items = new();
     private readonly IndexHandle _handle;
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)] private static partial int vn_clipboard_index_create(out long handle);
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)] private static partial int vn_clipboard_index_close(long handle);
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)] private static partial int vn_clipboard_index_find(IndexHandle handle, ulong a, ulong b, out int slot);
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)] private static partial int vn_clipboard_index_remove(IndexHandle handle, ulong a, ulong b);
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)] private static partial int vn_clipboard_index_put(IndexHandle handle, ulong a, ulong b, int slot, ReadOnlySpan<char> fingerprint, int length, long ticks, byte personal);
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)] private static partial int vn_clipboard_index_duplicate(IndexHandle handle, ReadOnlySpan<char> fingerprint, int length, byte personal, out int slot);
+
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_index_create(out IndexHandle handle);
+
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_index_close(long handle);
+
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_index_find(IndexHandle handle, ulong a, ulong b, out int slot);
+
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_index_remove(IndexHandle handle, ulong a, ulong b);
+
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_index_put(
+        IndexHandle handle, ulong a, ulong b, int slot, ReadOnlySpan<char> fingerprint, int length, long ticks, byte personal);
+
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_index_duplicate(
+        IndexHandle handle, ReadOnlySpan<char> fingerprint, int length, byte personal, out int slot);
 
     internal NativeClipboardEntryIndex()
     {
-        Check(vn_clipboard_index_create(out long handle));
-        _handle = new(handle);
+        int status = vn_clipboard_index_create(out IndexHandle handle);
+        if (status != (int)NativeStatus.Ok)
+        {
+            handle.Dispose();
+            throw new IOException("Clipboard memory index operation failed.");
+        }
+
+        _handle = handle;
     }
     private static void Check(int status) { if (status != 0) throw new IOException("Clipboard memory index operation failed."); }
     private static (ulong A, ulong B) Key(Guid id)

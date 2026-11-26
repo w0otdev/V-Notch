@@ -346,8 +346,10 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
     private bool _hasMoreResults;
     private int _nextSearchOffset;
     private bool _loadingMoreResults;
+    private CancellationToken _searchToken;
     private void CancelSearch()
     {
+        _searchToken = CancellationToken.None;
         var cts = Interlocked.Exchange(ref _searchCancellation, null);
         if (cts == null) return;
         try { cts.Cancel(); }
@@ -385,8 +387,13 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         var searchCts = new CancellationTokenSource();
         _searchCancellation = searchCts;
         var cancellation = searchCts.Token;
+        _searchToken = cancellation;
         int version = ++_refreshVersion;
-        if (UpdateCategoryLockState()) return;
+        if (UpdateCategoryLockState())
+        {
+            CancelSearch();
+            return;
+        }
         try
         {
             var page = await _controller.Store.SearchPageAsync(SearchBox.Text, _category, 0,
@@ -450,7 +457,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         if (!_hasMoreResults || _queryDirty || _loadingMoreResults || _controller == null || _disposed || _trayLeaving) return;
         _loadingMoreResults = true;
         int version = _refreshVersion;
-        var cancellation = _searchCancellation?.Token ?? CancellationToken.None;
+        var cancellation = _searchToken;
         try
         {
             var page = await _controller.Store.SearchPageAsync(SearchBox.Text, _category, _nextSearchOffset, 100, cancellation);
@@ -467,12 +474,12 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             foreach (var entry in entries)
                 if (!_cards.ById.ContainsKey(entry.Id))
                     _cards.Add(new ClipboardCardViewModel(entry, masking[entry.Id]));
-            if (endAnchor is double offset) scroll!.ScrollToHorizontalOffset(offset);
+            if (scroll != null && endAnchor is double offset) scroll.ScrollToHorizontalOffset(offset);
             _hasMoreResults = page.HasMore;
             _nextSearchOffset = page.NextOffset;
         }
-        catch (OperationCanceledException) { }
-        catch (ObjectDisposedException) { }
+        catch (OperationCanceledException) { /* Superseded by a newer search or tray exit. */ }
+        catch (ObjectDisposedException) { /* Store closed while paging results. */ }
         catch (Exception ex) when (ex is IOException or System.Security.Cryptography.CryptographicException or System.Text.Json.JsonException)
         { StatusChanged(Loc.Get("clipboard.error")); }
         finally { _loadingMoreResults = false; }
@@ -848,14 +855,15 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         else
         {
             for (int i = _cards.Count - 1; i >= 0; i--) if (_cards[i].Entry.IsPersonal)
-                {
-                    ReleaseRemovedCard(_cards[i]);
-                    _cards.RemoveAt(i);
-                }
+            {
+                ReleaseRemovedCard(_cards[i]);
+                _cards.RemoveAt(i);
+            }
         }
     }
 
-    internal async void Unlock_Click(object sender, RoutedEventArgs e) => await SafeAsync(UnlockPersonalAsync);
+    internal void Unlock_Click(object sender, RoutedEventArgs e)
+        => SafeAsync(UnlockPersonalAsync).SafeFireAndForget("CLIPBOARD-UI");
 
     private void ClearPendingPin()
     {
@@ -1114,7 +1122,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         SelectCard(card);
         e.Handled = true;
     }
-    private async void Card_Up(object sender, MouseButtonEventArgs e)
+    private void Card_Up(object sender, MouseButtonEventArgs e)
     {
         if (IsCardAction(e.OriginalSource as DependencyObject)) return;
         if (sender is FrameworkElement element) AnimateCardPress(element, false);
@@ -1124,15 +1132,16 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         e.Handled = true;
         bool copy = _copyOnRelease;
         _copyOnRelease = false;
-        if (copy && Keyboard.Modifiers == ModifierKeys.None && !_selection.Modified) await SafeAsync(() => CopyAsync(card));
+        if (copy && Keyboard.Modifiers == ModifierKeys.None && !_selection.Modified)
+            SafeAsync(() => CopyAsync(card)).SafeFireAndForget("CLIPBOARD-UI");
     }
-    private async void DustOverlay_DissolveRequested(object sender, RoutedEventArgs e)
+    private void DustOverlay_DissolveRequested(object sender, RoutedEventArgs e)
     {
         if (_controller == null || sender is not FrameworkElement { DataContext: ClipboardCardViewModel card }) return;
-        await SafeAsync(() => card.RevealAsync(_controller.Store));
+        SafeAsync(() => card.RevealAsync(_controller.Store)).SafeFireAndForget("CLIPBOARD-UI");
     }
     private bool _copyOnRelease;
-    private async void Card_Move(object sender, MouseEventArgs e)
+    private void Card_Move(object sender, MouseEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed || _dragStart is not Point start || _pressedCard == null || _controller == null || sender is not FrameworkElement element) return;
         var current = e.GetPosition(this);
@@ -1142,7 +1151,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         _pressedCard = null;
         _copyOnRelease = false;
         AnimateCardPress(element, false);
-        await SafeAsync(() => _controller.DragManyAsync(element, ExtractEntries(SelectedCards())));
+        SafeAsync(() => _controller.DragManyAsync(element, ExtractEntries(SelectedCards()))).SafeFireAndForget("CLIPBOARD-UI");
     }
     private async Task CopyAsync(ClipboardCardViewModel card)
     {
@@ -1571,11 +1580,16 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             }
         }));
     }
-    private async void Approve_Click(object sender, RoutedEventArgs e)
+    private void Approve_Click(object sender, RoutedEventArgs e)
     {
         if (_controller == null || !_approvals.TryDequeue(out var pending)) return;
+        ApprovePendingCaptureAsync(_controller, pending.Capture).SafeFireAndForget("CLIPBOARD-UI");
+    }
+
+    private async Task ApprovePendingCaptureAsync(ClipboardHistoryController controller, ClipboardCapture capture)
+    {
         ApproveButton.IsEnabled = false;
-        try { await SafeAsync(() => _controller.ImportAsync(pending.Capture, true)); }
+        try { await SafeAsync(() => controller.ImportAsync(capture, true)); }
         finally
         {
             ApproveButton.IsEnabled = true;
@@ -1588,29 +1602,36 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         _approvals.TryDequeue(out _);
         ShowApproval();
     }
-    internal void CloseDetail_Click(object sender, RoutedEventArgs e) => _ = SafeAsync(DismissDetailsAsync);
-    private async void RevealDetail_Click(object sender, RoutedEventArgs e)
+    internal void CloseDetail_Click(object sender, RoutedEventArgs e) => SafeAsync(DismissDetailsAsync).SafeFireAndForget("CLIPBOARD-UI");
+    private void RevealDetail_Click(object sender, RoutedEventArgs e)
     {
         if (_detailCard is not { } card || _controller == null) return;
         int version = _detailDismissVersion;
-        await SafeAsync(async () =>
-        {
-            if (card.IsRevealed)
-            {
-                card.Hide();
-                DetailText.Text = ClipboardSensitiveData.Mask;
-                RevealDetailButton.Content = card.RevealTooltip;
-                return;
-            }
-            await card.RevealAsync(_controller.Store);
-            if (version == _detailDismissVersion && ReferenceEquals(_detailCard, card) && card.IsRevealed)
-                await ShowDetailsAsync(card);
-        });
+        RevealDetailAsync(card, _controller, version).SafeFireAndForget("CLIPBOARD-UI");
     }
 
-    private async void CopyDetail_Click(object sender, RoutedEventArgs e)
+    private Task RevealDetailAsync(ClipboardCardViewModel card, ClipboardHistoryController controller, int version) => SafeAsync(async () =>
+    {
+        if (card.IsRevealed)
+        {
+            card.Hide();
+            DetailText.Text = ClipboardSensitiveData.Mask;
+            RevealDetailButton.Content = card.RevealTooltip;
+            return;
+        }
+        await card.RevealAsync(controller.Store);
+        if (version == _detailDismissVersion && ReferenceEquals(_detailCard, card) && card.IsRevealed)
+            await ShowDetailsAsync(card);
+    });
+
+    private void CopyDetail_Click(object sender, RoutedEventArgs e)
     {
         if (_detailCard is not { } card) return;
+        CopyDetailAsync(card).SafeFireAndForget("CLIPBOARD-UI");
+    }
+
+    private async Task CopyDetailAsync(ClipboardCardViewModel card)
+    {
         CopyDetailButton.IsEnabled = false;
         try { await SafeAsync(() => CopyAsync(card)); }
         finally { if (!_disposed) CopyDetailButton.IsEnabled = true; }
@@ -1659,7 +1680,8 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
     { if (ResetPersonalButton != null) ResetPersonalButton.IsEnabled = IsResetConfirmed(); }
     private bool IsResetConfirmed() => ResetConfirmationBox.Text.Trim() == "DELETE";
 
-    internal async void ResetPersonal_Click(object sender, RoutedEventArgs e) => await SafeAsync(ResetPersonalAsync);
+    internal void ResetPersonal_Click(object sender, RoutedEventArgs e)
+        => SafeAsync(ResetPersonalAsync).SafeFireAndForget("CLIPBOARD-UI");
     private async Task ResetPersonalAsync()
     {
         if (_controller == null || ResetConfirmationPanel.Visibility != Visibility.Visible || !IsResetConfirmed()) return;
@@ -1714,20 +1736,20 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         }
         return null;
     }
-    private async void Cards_KeyDown(object sender, KeyEventArgs e)
+    private void Cards_KeyDown(object sender, KeyEventArgs e)
     {
         if (_controller == null) return;
         if (e.Key == Key.A && Keyboard.Modifiers == ModifierKeys.Control) { e.Handled = SelectAllTrayItems(e.OriginalSource as DependencyObject); }
         else if (e.Key == Key.Enter || e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)
         {
             e.Handled = true;
-            await SafeAsync(CopySelectionAsync);
+            SafeAsync(CopySelectionAsync).SafeFireAndForget("CLIPBOARD-UI");
         }
         else if (e.Key == Key.Delete)
         {
             e.Handled = true;
             var selected = SelectedCards();
-            await SafeAsync(() => ConfirmDeleteAsync(selected));
+            SafeAsync(() => ConfirmDeleteAsync(selected)).SafeFireAndForget("CLIPBOARD-UI");
         }
     }
     public void Dispose()

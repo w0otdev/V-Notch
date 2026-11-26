@@ -1,4 +1,5 @@
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Xml;
@@ -141,6 +142,66 @@ public sealed class NativeParsingAndClipboardIndexTests
             destination.Dispose(); Assert.Equal(new byte[] { 99 }.Concat(bytes.Skip(1)), File.ReadAllBytes(Path.Combine(root, "dest")));
         }
         finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void DirectoryScanAndLyricParserBoundaryInputsAndDisposedAccessAreSafe()
+    {
+        Assert.Empty(NativeLyricParser.Parse(ReadOnlySpan<byte>.Empty, 0));
+        for (int i = 0; i < 10; i++)
+        {
+            var parsed = NativeLyricParser.Parse("{\"lines\":[{\"start\":1000,\"text\":\"hello\"}]}"u8, 2);
+            Assert.Single(parsed);
+        }
+
+        string root = Path.Combine(Path.GetTempPath(), "VNotch-scan-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "sample.txt"), "ok");
+            using var scan = new NativeClipboardDirectoryScan(root, string.Empty);
+            Assert.Equal(1, scan.Count);
+            Assert.EndsWith("sample.txt", scan.Get(0).Path, StringComparison.OrdinalIgnoreCase);
+            scan.Dispose();
+            Assert.Throws<ObjectDisposedException>(() => scan.Get(0));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void StreamCopyQuotaFailureKeepsFileStreamPositionSynchronizedAndEmptyHashMatchesManaged()
+    {
+        byte[] emptyDigest = new byte[32];
+        NativeClipboardHash.HashData(ReadOnlySpan<byte>.Empty, emptyDigest);
+        Assert.Equal(SHA256.HashData(ReadOnlySpan<byte>.Empty), emptyDigest);
+
+        using var incremental = NativeClipboardHash.Create();
+        incremental.AppendData(ReadOnlySpan<byte>.Empty);
+        Assert.Equal(SHA256.HashData(ReadOnlySpan<byte>.Empty), incremental.GetHashAndReset());
+
+        string root = Path.Combine(Path.GetTempPath(), "VNotch-quota-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            byte[] bytes = new byte[150_000];
+            new Random(7).NextBytes(bytes);
+            string srcPath = Path.Combine(root, "source.bin");
+            string dstPath = Path.Combine(root, "dest.bin");
+            File.WriteAllBytes(srcPath, bytes);
+            using var source = File.OpenRead(srcPath);
+            using var destination = File.Create(dstPath);
+            Assert.Throws<ClipboardImportLimitException>(() =>
+                NativeClipboardStreamCopy.Copy(source, destination, 70_000));
+            Assert.Equal(65_536, source.Position);
+            Assert.Equal(65_536, destination.Position);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     private static byte[] ReadAll(Stream stream) { using var result = new MemoryStream(); stream.CopyTo(result); return result.ToArray(); }

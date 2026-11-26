@@ -49,7 +49,7 @@ struct Selection {
     Bounds bounds;
     bool editable = false, truncated = false;
 };
-vnotch::HandleRegistry<Selection> selections;
+vnotch::ImmortalHandleRegistry<Selection> selections;
 int number(IUIAutomationElement* element, PROPERTYID property) {
     Variant v;
     return element && SUCCEEDED(element->GetCachedPropertyValue(property, &v.value)) && v.value.vt == VT_I4 ? v.value.lVal : 0;

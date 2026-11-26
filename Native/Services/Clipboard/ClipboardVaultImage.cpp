@@ -12,7 +12,7 @@ struct PlainImage {
         if (bytes) { SecureZeroMemory(bytes, length); VirtualFree(bytes, 0, MEM_RELEASE); }
     }
 };
-vnotch::HandleRegistry<PlainImage> images;
+vnotch::ImmortalHandleRegistry<PlainImage> images;
 struct Algorithm {
     BCRYPT_ALG_HANDLE value = nullptr;
     ~Algorithm() { if (value) BCryptCloseAlgorithmProvider(value, 0); }

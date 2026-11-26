@@ -93,6 +93,30 @@ public sealed class EverythingSearchProviderTests
         }
     }
 
+    [Fact]
+    public void ParseReply_HandlesUnalignedStringOffsetWithoutUndefinedBehavior()
+    {
+        int oddNameOffset = HeaderBytes + ItemBytes + 1;
+        int totalBytes = oddNameOffset + 32;
+        IntPtr buffer = Marshal.AllocHGlobal(totalBytes);
+        try
+        {
+            for (int i = 0; i < totalBytes; i++) Marshal.WriteByte(buffer, i, 0);
+            Marshal.WriteInt32(buffer, 20, 1);
+            WriteItem(buffer, HeaderBytes, 0, oddNameOffset, oddNameOffset);
+            WriteString(buffer, oddNameOffset, "odd.txt");
+
+            var rows = EverythingSearchProvider.ParseReply(buffer, totalBytes);
+
+            Assert.Single(rows);
+            Assert.Equal(("odd.txt", "odd.txt", false), rows[0]);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
     private static void WriteItem(IntPtr buffer, int itemOffset, int flags, int nameOffset, int parentOffset)
     {
         Marshal.WriteInt32(buffer, itemOffset, flags);

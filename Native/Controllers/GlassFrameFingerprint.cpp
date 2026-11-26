@@ -1,6 +1,7 @@
 #include "../vnotch_common.h"
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 
 namespace vnotch::controllers
 {
@@ -27,34 +28,49 @@ public:
         constexpr uint64_t prime = 1099511628211ULL;
         constexpr uint64_t seed = 14695981039346656037ULL;
         uint64_t a = seed, b = seed, c = seed, d = seed;
-        int64_t row_bytes = static_cast<int64_t>(width) * 4LL;
-        int32_t words = static_cast<int32_t>(row_bytes >> 3);
-        int32_t step = std::max(1, words / 96);
-        int32_t row_step = std::max(1, height / 96);
+        const int64_t row_bytes = static_cast<int64_t>(width) * 4LL;
+        const int32_t words = static_cast<int32_t>(row_bytes >> 3);
+        const int32_t step = std::max(1, words / 96);
+        const int32_t row_step = std::max(1, height / 96);
 
         for (int32_t y = 0; y < height; y += row_step)
         {
-            const uint64_t* row = reinterpret_cast<const uint64_t*>(pixels + static_cast<int64_t>(y) * row_bytes);
+            const uint8_t* row = pixels + static_cast<int64_t>(y) * row_bytes;
             int32_t i = 0;
             for (; i + 3 * step < words; i += 4 * step)
             {
-                a = (a ^ row[i]) * prime;
-                b = (b ^ row[i + step]) * prime;
-                c = (c ^ row[i + 2 * step]) * prime;
-                d = (d ^ row[i + 3 * step]) * prime;
+                a = (a ^ ReadU64(row + static_cast<int64_t>(i) * 8)) * prime;
+                b = (b ^ ReadU64(row + static_cast<int64_t>(i + step) * 8)) * prime;
+                c = (c ^ ReadU64(row + static_cast<int64_t>(i + 2 * step) * 8)) * prime;
+                d = (d ^ ReadU64(row + static_cast<int64_t>(i + 3 * step) * 8)) * prime;
             }
             for (; i < words; i += step)
             {
-                a = (a ^ row[i]) * prime;
+                a = (a ^ ReadU64(row + static_cast<int64_t>(i) * 8)) * prime;
             }
             if ((width & 1) != 0)
             {
-                d = (d ^ reinterpret_cast<const uint32_t*>(row)[width - 1]) * prime;
+                d = (d ^ ReadU32(row + static_cast<int64_t>(width - 1) * 4)) * prime;
             }
         }
 
         *out_hash = (((((a * prime) ^ b) * prime) ^ c) * prime) ^ d;
         return VN_OK;
+    }
+
+private:
+    static inline uint64_t ReadU64(const uint8_t* ptr) noexcept
+    {
+        uint64_t value;
+        std::memcpy(&value, ptr, sizeof(value));
+        return value;
+    }
+
+    static inline uint32_t ReadU32(const uint8_t* ptr) noexcept
+    {
+        uint32_t value;
+        std::memcpy(&value, ptr, sizeof(value));
+        return value;
     }
 };
 
@@ -63,7 +79,7 @@ public:
 extern "C"
 {
 
-VN_EXPORT int32_t vn_glass_frame_fingerprint_compute(
+VN_EXPORT int32_t __stdcall vn_glass_frame_fingerprint_compute(
     const uint8_t* pixels,
     int32_t width,
     int32_t height,

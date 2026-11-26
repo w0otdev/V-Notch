@@ -1,7 +1,6 @@
 #include "../vnotch_common.h"
 #include "MediaTitleEvents.h"
 #include <array>
-#include <mutex>
 #include "../vnotch_com.h"
 #include <winstring.h>
 #include <windows.media.control.h>
@@ -448,11 +447,11 @@ VN_EXPORT int32_t __stdcall vn_media_detection_get_spotify_window_title(
     int32_t* out_len) noexcept {
     if (!out_buf || out_cap <= 0 || !out_len) return VN_ERR_INVALID_ARG;
     try {
-        static std::mutex gate;
+        static SRWLOCK gate = SRWLOCK_INIT;
         static std::array<char16_t, 512> cached{};
         static int32_t cached_length = 0;
         static uint64_t revision = 0, scanned_at = 0;
-        std::lock_guard lock(gate);
+        vnotch::com::SrwExclusiveGuard lock(&gate);
         const uint64_t now = GetTickCount64(), current = vnotch::services::MediaTitleRevision();
         if (!vnotch::services::MediaTitleNotificationsActive() || current != revision || now - scanned_at >= 30'000) {
             vnotch::services::SpotifySearchContext ctx{cached.data(), static_cast<int32_t>(cached.size()), 0};
@@ -467,7 +466,7 @@ VN_EXPORT int32_t __stdcall vn_media_detection_get_spotify_window_title(
     }
 }
 
-extern "C" int32_t __stdcall vn_media_detection_parse_youtube_window_title(
+VN_EXPORT int32_t __stdcall vn_media_detection_parse_youtube_window_title(
     const char16_t* extracted_title,
     int32_t extracted_title_len,
     char16_t* out_track,

@@ -17,7 +17,7 @@ internal static partial class TranslationNativeRuntime
     private static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(30);
     private static readonly SemaphoreSlim VulkanInstallLock = new(1, 1);
     private static readonly object LoadLock = new();
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(Interop.NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_translation_runtime_is_allowed_uri(
         ReadOnlySpan<char> schemePtr, int schemeLen,
         int userInfoLen,

@@ -432,7 +432,7 @@ namespace vnotch::services
 extern "C"
 {
 
-VN_EXPORT int32_t vn_windows_search_sanitize_query(
+VN_EXPORT int32_t __stdcall vn_windows_search_sanitize_query(
     const char16_t* query_ptr, int32_t query_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {

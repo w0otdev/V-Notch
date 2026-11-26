@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using VNotch.Services;
 using VNotch.ViewModels;
 
 namespace VNotch.Controls;
@@ -231,7 +232,7 @@ public sealed partial class ClipboardTray
         return true;
     }
 
-    private async void CategoryReorder_KeyDown(object sender, KeyEventArgs e)
+    private void CategoryReorder_KeyDown(object sender, KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         if (Keyboard.Modifiers != ModifierKeys.Alt || key is not (Key.Left or Key.Right) ||
@@ -245,6 +246,6 @@ public sealed partial class ClipboardTray
         string? beforeId = key == Key.Left ? _categoryItems[destination].Name : rightTargetId;
 
         CancelCategoryReorder();
-        await SafeAsync(() => CommitCategoryReorderAsync(category.Name, beforeId));
+        SafeAsync(() => CommitCategoryReorderAsync(category.Name, beforeId)).SafeFireAndForget("CLIPBOARD-UI");
     }
 }

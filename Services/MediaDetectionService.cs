@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using VNotch.Interop;
 using VNotch.Models;
 using Windows.Media.Control;
 
@@ -15,7 +16,7 @@ namespace VNotch.Services;
 
 public sealed partial class MediaDetectionService : IMediaDetectionService, IAsyncDisposable
 {
-    private const string NativeDll = "VNotch.Native.dll";
+    private const string NativeDll = NativeAbi.LibraryName;
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct VnMediaPublishParams
@@ -55,13 +56,13 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         in VnMediaPublishParams @params,
         out byte outShouldPublish);
 
-        [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_media_detection_extract_process_name(
-        ReadOnlySpan<char> sourceApp,
-        int sourceAppLen,
-        Span<char> outBuf,
-        int outCap,
-        out int outLen);
+    ReadOnlySpan<char> sourceApp,
+    int sourceAppLen,
+    Span<char> outBuf,
+    int outCap,
+    out int outLen);
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_media_detection_extract_youtube_video_id(
@@ -383,10 +384,12 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             _state = ServiceLifecycleState.Starting;
             int generation = unchecked(++_lifecycleGeneration);
 
-            _bgCts?.Cancel();
-            _bgCts?.Dispose();
-            _bgCts = new CancellationTokenSource();
-            var ct = _bgCts.Token;
+            var previousCts = Interlocked.Exchange(ref _bgCts, null);
+            previousCts?.Cancel();
+
+            var nextCts = new CancellationTokenSource();
+            Volatile.Write(ref _bgCts, nextCts);
+            var ct = nextCts.Token;
 
             _startupProgressSyncUntilUtc = DateTime.UtcNow.AddSeconds(5);
             _initTask = StartCoreAsync(generation, ct);
@@ -613,11 +616,9 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         RuntimeLog.Log($"MEDIA-{tag}", message);
     }
 
-    #region Background Processing
-
     private async Task ProcessingLoopAsync(CancellationToken ct)
     {
-        await foreach (var types in _changes.ReadAllAsync(ct))
+        await foreach (var types in _changes.ReadAllAsync(ct).ConfigureAwait(false))
         {
             try
             {
@@ -632,7 +633,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                     SubscribeToCurrentSession();
                 }
 
-                await UpdateMediaInfoAsync(forceRefresh, ct);
+                await UpdateMediaInfoAsync(forceRefresh, ct).ConfigureAwait(false);
                 SyncTitleMonitorTarget();
             }
             catch (OperationCanceledException) { break; }
@@ -684,7 +685,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
                 try
                 {
-                    await Task.Delay(interval, ct);
+                    await Task.Delay(interval, ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) { break; }
 
@@ -733,17 +734,20 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
     private void StartAwaitingMetadataPolling()
     {
-        var cts = _bgCts;
+        var cts = Volatile.Read(ref _bgCts);
         if (cts == null || cts.IsCancellationRequested)
         {
             return;
         }
 
+        CancellationToken token;
+        try { token = cts.Token; }
+        catch (ObjectDisposedException) { return; }
+
         int generation = Interlocked.Increment(ref _awaitingMetadataPollGeneration);
         DateTime startedUtc = DateTime.UtcNow;
-        var token = cts.Token;
 
-        _ = Task.Run(async () =>
+        Task.Run(async () =>
         {
             try
             {
@@ -751,7 +755,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 {
                     var interval = MediaMetadataRecoveryPolicy.GetAwaitingMetadataPollInterval(
                         DateTime.UtcNow - startedUtc);
-                    await Task.Delay(interval, token);
+                    await Task.Delay(interval, token).ConfigureAwait(false);
 
                     if (generation != Volatile.Read(ref _awaitingMetadataPollGeneration))
                     {
@@ -769,10 +773,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             {
                 RuntimeLog.Error("MEDIA-METADATA-POLL", ex.ToString());
             }
-        }, token);
+        }, token).SafeFireAndForget("MEDIA-METADATA-POLL");
     }
-
-    #endregion
 
     internal async Task UpdateMediaInfoAsync(bool forceRefresh, CancellationToken ct)
     {

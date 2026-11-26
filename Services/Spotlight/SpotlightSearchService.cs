@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using VNotch.Interop;
 using VNotch.Models;
 using VNotch.Services.Spotlight.Providers;
 
@@ -8,7 +9,7 @@ namespace VNotch.Services.Spotlight;
 
 internal sealed partial class SpotlightSearchService
 {
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_search_try_normalize_input(
         ReadOnlySpan<char> queryPtr,
         int queryLen,
@@ -18,7 +19,7 @@ internal sealed partial class SpotlightSearchService
         out int outLen,
         out int outLimit);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     internal static partial int vn_spotlight_search_compare_keys(
         double scoreA,
         ReadOnlySpan<char> titleAPtr,

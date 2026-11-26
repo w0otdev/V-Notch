@@ -104,6 +104,54 @@ public sealed class SpotlightUsageStoreTests : IDisposable
         Assert.True(reloaded.GetBoostNormalized("app:one", string.Empty) > 0);
     }
 
+    [Fact]
+    public async Task Preferences_LockedReadDoesNotOverwriteOriginalStateOnSubsequentEdit()
+    {
+        string prefsPath = Path.Combine(_directory, "prefs-locked.json");
+        var pinned = Item("app:pinned", @"C:\Windows\notepad.exe");
+        var seed = new SpotlightPreferences(prefsPath);
+        Assert.True(seed.SetApp(pinned, pinned: true, alias: "np"));
+        seed.SetExcludedFolders([@"C:\SecretFolder"]);
+        await seed.FlushAsync();
+
+        var lockedReader = new SpotlightPreferences(prefsPath);
+        using (File.Open(prefsPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.Empty(lockedReader.Search(string.Empty));
+            Assert.False(lockedReader.SetApp(Item("app:other", @"C:\Windows\calc.exe"), pinned: true, alias: "c"));
+            await lockedReader.FlushAsync();
+        }
+
+        // Once the file lock clears, a fresh read or new instance must still see original preferences.
+        var reloaded = new SpotlightPreferences(prefsPath);
+        Assert.True(reloaded.IsPinned(pinned.Target));
+        Assert.Equal("np", reloaded.GetAlias(pinned.Target));
+        Assert.Contains(@"C:\SecretFolder", reloaded.GetExcludedFolders());
+        Assert.True(lockedReader.IsPinned(pinned.Target));
+    }
+
+    [Fact]
+    public async Task Preferences_And_ChatStore_HandleBareFileNameWithoutDirectorySegment()
+    {
+        string origDir = Environment.CurrentDirectory;
+        Environment.CurrentDirectory = _directory;
+        try
+        {
+            var prefs = new SpotlightPreferences("bare-prefs.json");
+            Assert.True(prefs.SetApp(Item("app:a", @"C:\Windows\notepad.exe"), pinned: true, alias: "a"));
+            await prefs.FlushAsync();
+            Assert.True(File.Exists(Path.Combine(_directory, "bare-prefs.json")));
+
+            var chats = new SpotlightChatStore("bare-chats.enc");
+            Assert.True(chats.Save([new SpotlightSavedChat { Draft = "hello" }]));
+            Assert.True(File.Exists(Path.Combine(_directory, "bare-chats.enc")));
+        }
+        finally
+        {
+            Environment.CurrentDirectory = origDir;
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

@@ -1,10 +1,10 @@
-using VNotch.Models;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using VNotch.Models;
 using VNotch.Services;
 using VNotch.Services.Clipboard;
 using VNotch.ViewModels;
@@ -160,7 +160,8 @@ public sealed partial class ClipboardTray
     }
 
     private void SelectAll_Click(object sender, RoutedEventArgs e) => SelectAllTrayItems(null);
-    internal async void DeleteSelected_Click(object sender, RoutedEventArgs e) => await SafeAsync(() => ConfirmDeleteAsync(SelectedCards()));
+    internal void DeleteSelected_Click(object sender, RoutedEventArgs e)
+        => SafeAsync(() => ConfirmDeleteAsync(SelectedCards())).SafeFireAndForget("CLIPBOARD-UI");
 
     private void AddLabel_Click(object sender, RoutedEventArgs e)
     {
@@ -299,12 +300,13 @@ public sealed partial class ClipboardTray
     }
 
     private void CancelLabel_Click(object sender, RoutedEventArgs e) => CloseLabelEditor();
-    private async void SaveLabel_Click(object sender, RoutedEventArgs e) => await SaveLabelAsync();
-    private async void LabelName_KeyDown(object sender, KeyEventArgs e)
+    private void SaveLabel_Click(object sender, RoutedEventArgs e)
+        => SaveLabelAsync().SafeFireAndForget("CLIPBOARD-UI");
+    private void LabelName_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
         e.Handled = true;
-        await SaveLabelAsync();
+        SaveLabelAsync().SafeFireAndForget("CLIPBOARD-UI");
     }
 
     private async Task SaveLabelAsync()

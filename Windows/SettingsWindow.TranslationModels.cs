@@ -25,7 +25,7 @@ public partial class SettingsWindow
         if (!_translationHardwareStarted && !IsDeferringBackgroundInitialization)
         {
             _translationHardwareStarted = true;
-            _ = DetectTranslationHardwareAsync();
+            DetectTranslationHardwareAsync().SafeFireAndForget("TRANSLATION-HW-DETECT");
         }
     }
 
@@ -109,7 +109,13 @@ public partial class SettingsWindow
     private void TranslationModelDetails_Click(object sender, RoutedEventArgs e) =>
         SafeLauncher.TryOpenUrl(string.Concat("https://", "huggingface.co/", _translationStore.Profile.Repository));
 
-    private async void TranslationCustomImport_Click(object sender, RoutedEventArgs e)
+    private void TranslationCustomImport_Click(object sender, RoutedEventArgs e)
+    {
+        if (_translationDownload != null) return;
+        HandleCustomTranslationImportAsync().SafeFireAndForget("TRANSLATION");
+    }
+
+    private async Task HandleCustomTranslationImportAsync()
     {
         if (_translationDownload != null) return;
         var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "GGUF|*.gguf", Title = Loc.Get("translation.customImport"), CheckFileExists = true };

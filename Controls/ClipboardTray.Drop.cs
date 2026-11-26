@@ -130,7 +130,7 @@ public sealed partial class ClipboardTray
         e.Handled = true;
     }
 
-    private async void Category_Drop(object sender, DragEventArgs e)
+    private void Category_Drop(object sender, DragEventArgs e)
     {
         var button = (Button)sender;
         TrayMotion.SetOpacity(button, 1);
@@ -144,11 +144,10 @@ public sealed partial class ClipboardTray
         if (entries.Length == 0 && files.Length == 0 && !e.Data.GetDataPresent(DataFormats.FileDrop))
         {
             ClipboardDropReader.Payload? payload = null;
-            await SafeAsync(() =>
-            {
-                payload = ClipboardDropReader.Read(e.Data);
-                return Task.CompletedTask;
-            });
+            try { payload = ClipboardDropReader.Read(e.Data); }
+            catch (Exception ex) when (IsContentError(ex) || ex is System.Runtime.InteropServices.ExternalException)
+            { StatusChanged(Loc.Get("clipboard.error")); }
+
             if (controller != _controller || payload == null || !CanDropCategory(category, [new ClipboardEntry { Kind = payload.Kind }], [])) return;
             e.Effects = DragDropEffects.Copy;
             if (category == "Personal" && !controller.Store.IsPersonalUnlocked)
@@ -157,13 +156,7 @@ public sealed partial class ClipboardTray
                 if (!TryQueueBrowserDrop(payload)) e.Effects = DragDropEffects.None;
                 return;
             }
-            bool imported = false;
-            await SafeAsync(async () =>
-            {
-                await controller.ImportDropPayloadAsync(payload, category);
-                imported = true;
-            });
-            if (imported && !_disposed && controller == _controller) SelectCategory(category);
+            CompleteBrowserDropAsync(controller, payload, category).SafeFireAndForget("CLIPBOARD-DROP");
             return;
         }
         if (!CanDropCategory(category, entries, files))
@@ -194,6 +187,22 @@ public sealed partial class ClipboardTray
             _pendingPersonalFiles = pendingFiles;
             return;
         }
+        CompleteCategoryItemsDropAsync(controller, entries, files, category).SafeFireAndForget("CLIPBOARD-DROP");
+    }
+
+    private async Task CompleteBrowserDropAsync(ClipboardHistoryController controller, ClipboardDropReader.Payload payload, string category)
+    {
+        bool imported = false;
+        await SafeAsync(async () =>
+        {
+            await controller.ImportDropPayloadAsync(payload, category);
+            imported = true;
+        });
+        if (imported && !_disposed && controller == _controller) SelectCategory(category);
+    }
+
+    private async Task CompleteCategoryItemsDropAsync(ClipboardHistoryController controller, ClipboardEntry[] entries, string[] files, string category)
+    {
         bool completed = false;
         await SafeAsync(async () =>
         {

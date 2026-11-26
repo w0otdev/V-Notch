@@ -90,16 +90,18 @@ public partial class SpotlightWindow : Window
     private bool _unparkedWindowHitTesting = true;
     private bool _unparkedWindowFocusable = true;
     private IntPtr _previousForegroundWindow;
+    private readonly SpotlightSfxPlayer _sfxPlayer = new();
     private CancellationTokenSource? _searchDebounceCts;
-    private Uri? _spotlightClickUri;
     internal ISpotlightMorphHost? MorphHostOverride { get; set; }
     internal bool SuppressForegroundActivationForTests { get; set; }
     internal bool IsSpotlightOpen => IsVisible && !_isParked;
     internal event EventHandler? OpenStateChanged;
 
     internal SpotlightWindow(SpotlightViewModel viewModel, SpotlightLauncher launcher, NotchSettings? settings = null,
-        SpotlightAiService? aiService = null, IChatRepository? chatStore = null)
+        SpotlightAiService? aiService = null, IChatRepository? chatStore = null,
+        Func<bool>? systemTransparencyOverride = null)
     {
+        _systemTransparencyOverride = systemTransparencyOverride;
         _aiService = aiService ?? new SpotlightAiService();
         _chatStore = chatStore ?? new SpotlightChatStore();
         _chatSession = new VNotch.ApplicationServices.ChatSession(_chatStore);
@@ -142,32 +144,50 @@ public partial class SpotlightWindow : Window
         };
 
         // The entrance morph publishes results while the shell is still at
-        ResultsList.SizeChanged += (_, _) => ScheduleGlideUpdate();
+        ResultsList.SizeChanged += OnResultsListSizeChanged;
 
         // Never measure the ListBox from inside ObservableCollection's
-        _viewModel.Results.CollectionChanged += (_, _) => ScheduleStatusRefresh();
-        _viewModel.ResultsPublished += (_, _) => OnResultsPublished();
-        _viewModel.PropertyChanged += (_, args) =>
+        _viewModel.Results.CollectionChanged += OnViewModelResultsChanged;
+        _viewModel.ResultsPublished += OnViewModelResultsPublished;
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    private bool _viewModelEventsDetached;
+
+    private void OnResultsListSizeChanged(object sender, SizeChangedEventArgs e) => ScheduleGlideUpdate();
+    private void OnViewModelResultsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => ScheduleStatusRefresh();
+    private void OnViewModelResultsPublished(object? sender, EventArgs e) => OnResultsPublished();
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(SpotlightViewModel.IsSearching)
+            or nameof(SpotlightViewModel.HasNoResults)
+            or nameof(SpotlightViewModel.IsWindowsSearchUnavailable)
+            or nameof(SpotlightViewModel.IsFileSearchPartial))
         {
-            if (args.PropertyName is nameof(SpotlightViewModel.IsSearching)
-                or nameof(SpotlightViewModel.HasNoResults)
-                or nameof(SpotlightViewModel.IsWindowsSearchUnavailable)
-                or nameof(SpotlightViewModel.IsFileSearchPartial))
+            if (args.PropertyName == nameof(SpotlightViewModel.IsSearching)
+                && !_viewModel.IsSearching)
             {
-                if (args.PropertyName == nameof(SpotlightViewModel.IsSearching)
-                    && !_viewModel.IsSearching)
+                SetResultsDimmed(false);
+                // The search finished empty; a queued Enter must never fire, but shake to notify
+                if (_viewModel.Results.Count == 0 && _pendingLaunchQuery != null)
                 {
-                    SetResultsDimmed(false);
-                    // The search finished empty; a queued Enter must never fire, but shake to notify
-                    if (_viewModel.Results.Count == 0 && _pendingLaunchQuery != null)
-                    {
-                        _pendingLaunchQuery = null;
-                        PlayShake();
-                    }
+                    _pendingLaunchQuery = null;
+                    PlayShake();
                 }
-                RefreshStatus();
             }
-        };
+            RefreshStatus();
+        }
+    }
+
+    private void DetachViewModelEvents()
+    {
+        if (_viewModelEventsDetached) return;
+        _viewModelEventsDetached = true;
+        ResultsList.SizeChanged -= OnResultsListSizeChanged;
+        _viewModel.Results.CollectionChanged -= OnViewModelResultsChanged;
+        _viewModel.ResultsPublished -= OnViewModelResultsPublished;
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
     }
 
     internal void RefreshLocalization()
@@ -185,7 +205,7 @@ public partial class SpotlightWindow : Window
         RefreshStatus();
         if (IsSpotlightOpen && !_isClosing && SearchBox != null && !_aiMode)
         {
-            _ = _viewModel.SearchAsync(SearchBox.Text);
+            _viewModel.SearchAsync(SearchBox.Text).SafeFireAndForget("SPOTLIGHT-SEARCH");
         }
     }
 
@@ -231,7 +251,7 @@ public partial class SpotlightWindow : Window
             && DateTime.UtcNow - _lastDismissedAtUtc < QueryRestoreWindow;
         SearchBox.Text = restoreQuery ? _lastDismissedQuery : string.Empty;
         if (restoreQuery) SearchBox.SelectAll();
-        else if (!_aiMode) _ = _viewModel.SearchAsync(string.Empty);
+        else if (!_aiMode) _viewModel.SearchAsync(string.Empty).SafeFireAndForget("SPOTLIGHT-SEARCH");
 
         // Search mode may have left the results list/status visible. Re-sync
         // the whole surface so AI mode never reopens showing stale search UI.
@@ -294,73 +314,23 @@ public partial class SpotlightWindow : Window
         }
     }
 
-    // The click sound is decoded, softened and played by VNotch.Native (Native/Services/SpotlightSfx.cpp).
-    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll", StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
-    private static partial int vn_spotlight_sfx_load(string path, int pathLength, out int hresult);
-
-    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_spotlight_sfx_play(float volume);
-
-    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_spotlight_sfx_stop();
-
-    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_spotlight_sfx_is_loaded(out byte loaded);
-
     private bool _sfxCleanupHooked;
-    private long _lastSpotlightSfxTick;
 
-    private static void DisposeSpotlightSfxOutput() => vn_spotlight_sfx_stop();
+    private static void DisposeSpotlightSfxOutput() => SpotlightSfxPlayer.Stop();
 
     private void EnsureSfxCleanupHooked()
     {
         if (_sfxCleanupHooked) return;
         _sfxCleanupHooked = true;
-        Closed += (_, _) => DisposeSpotlightSfxOutput();
+        Closed += (_, _) => SpotlightSfxPlayer.Stop();
     }
 
     private void PlaySpotlightClickSfx()
     {
-        if (SuppressForegroundActivationForTests || !_settings.EnableInteractionSounds || _settings.InteractionSoundVolume <= 0) return;
-        long now = Environment.TickCount64;
-        if (now - _lastSpotlightSfxTick < 220) return;
-        _lastSpotlightSfxTick = now;
-        try
-        {
-            EnsureSfxCleanupHooked();
-            if (vn_spotlight_sfx_is_loaded(out byte loaded) != 0 || loaded == 0)
-            {
-                static string FindSfx(string folder)
-                {
-                    string m4a = System.IO.Path.Combine(folder, "Assets", "SPL_CLICK_SFX.m4a");
-                    if (System.IO.File.Exists(m4a)) return m4a;
-                    string mp3 = System.IO.Path.Combine(folder, "Assets", "SPL_CLICK_SFX.mp3");
-                    return System.IO.File.Exists(mp3) ? mp3 : m4a;
-                }
-
-                string? dir = AppDomain.CurrentDomain.BaseDirectory;
-                for (int depth = 0; depth < 6 && !string.IsNullOrEmpty(dir); depth++)
-                {
-                    string candidate = FindSfx(dir);
-                    if (System.IO.File.Exists(candidate))
-                    {
-                        _spotlightClickUri = new Uri(candidate, UriKind.Absolute);
-                        break;
-                    }
-                    dir = System.IO.Directory.GetParent(dir)?.FullName;
-                }
-
-                if (_spotlightClickUri == null) return;
-                string path = _spotlightClickUri.LocalPath;
-                if (vn_spotlight_sfx_load(path, path.Length, out _) != 0) return;
-            }
-
-            vn_spotlight_sfx_play((float)Math.Clamp(_settings.InteractionSoundVolume * 1.35, 0.0, 1.0));
-        }
-        catch
-        {
-            // Ignore audio playback errors
-        }
+        if (SuppressForegroundActivationForTests || !_settings.EnableInteractionSounds || _settings.InteractionSoundVolume <= 0)
+            return;
+        EnsureSfxCleanupHooked();
+        _sfxPlayer.PlayClick(_settings.InteractionSoundVolume);
     }
     private void ScheduleFreshEntranceAfterComposition(
         Action startEntrance,
@@ -532,6 +502,7 @@ public partial class SpotlightWindow : Window
     {
         ++_animationGeneration;
         _allowClose = true;
+        DetachViewModelEvents();
         CloseAiProviderMenu();
         CancelAiRequest();
         SaveAiHistory();
@@ -582,6 +553,7 @@ public partial class SpotlightWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        DetachViewModelEvents();
         AnimationConfig.ReduceMotionChanged -= OnSearchMotionPreferenceChanged;
         _searchMotion.SetActive(false);
         ClearLaunchFailure();
@@ -721,6 +693,10 @@ public partial class SpotlightWindow : Window
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
             // Cancelled due to rapid typing or window closure
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SPOTLIGHT-SEARCH", ex, "Unexpected error while handling search input");
         }
         finally
         {
@@ -1505,7 +1481,9 @@ public partial class SpotlightWindow : Window
         ResultsList.ScrollIntoView(ResultsList.SelectedItem);
     }
 
-    private async void LaunchSelected()
+    private void LaunchSelected() => LaunchSelectedAsync().SafeFireAndForget("SPOTLIGHT-LAUNCH");
+
+    private async Task LaunchSelectedAsync()
     {
         SpotlightSearchItem? selected = _viewModel.SelectedResult;
         if (selected == null)
@@ -1580,7 +1558,9 @@ public partial class SpotlightWindow : Window
         }
     }
 
-    private async void LaunchSelectedElevated()
+    private void LaunchSelectedElevated() => LaunchSelectedElevatedAsync().SafeFireAndForget("SPOTLIGHT-LAUNCH");
+
+    private async Task LaunchSelectedElevatedAsync()
     {
         SpotlightSearchItem? selected = _viewModel.SelectedResult;
         if (selected == null)
@@ -1592,7 +1572,7 @@ public partial class SpotlightWindow : Window
         if (!SpotlightLauncher.CanLaunchElevated(selected))
         {
             // Store apps cannot take the runas verb; a plain launch beats a dead key.
-            LaunchSelected();
+            await LaunchSelectedAsync();
             return;
         }
 
@@ -1627,7 +1607,9 @@ public partial class SpotlightWindow : Window
         }
     }
 
-    private async void RevealSelected()
+    private void RevealSelected() => RevealSelectedAsync().SafeFireAndForget("SPOTLIGHT-LAUNCH");
+
+    private async Task RevealSelectedAsync()
     {
         SpotlightSearchItem? selected = _viewModel.SelectedResult;
         if (selected == null)

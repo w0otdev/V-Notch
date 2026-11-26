@@ -174,11 +174,35 @@ public sealed class UpdateServiceSecurityTests
         Assert.Equal(expectedSign, Math.Sign(result));
     }
 
+    [Fact]
+    public async Task CheckForUpdates_DisposeCancelsInFlightRequest()
+    {
+        var requestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var service = new UpdateService(
+            new HttpClient(new AsyncStubHandler(async (_, ct) =>
+            {
+                requestStarted.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            })),
+            new UpdateSecurityPolicy(),
+            _ => (true, string.Empty));
+
+        Task<UpdateInfo?> checkTask = service.CheckForUpdatesAsync(forceRefresh: true);
+        await requestStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        service.Dispose();
+
+        UpdateInfo? result = await checkTask.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.Null(result);
+    }
+
     private static UpdateService CreateService(Func<HttpRequestMessage, HttpResponseMessage> reply) =>
         new(new HttpClient(new StubHandler(reply)), new UpdateSecurityPolicy(), _ => (true, string.Empty));
 
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> reply) : HttpMessageHandler
     { protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(reply(request)); }
+    private sealed class AsyncStubHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> reply) : HttpMessageHandler
+    { protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => reply(request, cancellationToken); }
     private sealed class BlockingStream : MemoryStream
     { public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.FromCanceled<int>(cancellationToken); }
     private sealed class StreamOnlyContent(string json) : HttpContent

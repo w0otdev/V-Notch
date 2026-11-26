@@ -46,7 +46,7 @@ struct Result {
         if (valid) words.insert(words.end(), parts.begin(), parts.end());
     }
 };
-vnotch::HandleRegistry<Result> results;
+vnotch::ImmortalHandleRegistry<Result> results;
 
 bool clock_time(View input, int64_t& ticks) {
     if (input.ends_with(u's')) input.remove_suffix(1);

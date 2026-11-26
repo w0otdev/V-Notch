@@ -861,7 +861,7 @@ public partial class MainWindow : Window
             _clipboardTrayView?.BeginExit();
         if (args.TargetView != VNotch.Models.NotchView.Secondary &&
             _clipboardHistory?.Store.IsPersonalUnlocked == true)
-            _ = _clipboardHistory.LockPersonalAsync();
+            _clipboardHistory.LockPersonalAsync().SafeFireAndForget("CLIPBOARD-LOCK");
         NavTabsStackPanel.Margin = new Thickness(14, 3, 0, 0);
         // Direct view switches do not always start another presenter animation.
         // Detach its old clocks first so HoldEnd cannot override the new view.

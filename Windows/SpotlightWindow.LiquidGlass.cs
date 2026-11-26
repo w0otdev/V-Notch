@@ -32,6 +32,7 @@ public partial class SpotlightWindow
     private bool? _cachedSystemTransparency;
     private long _lastTransparencyCheckTicks;
     private UiScheduledTimer? _glassResourceExpiry;
+    private readonly Func<bool>? _systemTransparencyOverride;
 
     private void RetainGlassForReopen()
     {
@@ -744,10 +745,7 @@ public partial class SpotlightWindow
 
     private static bool CaptureRegionEquals(LiquidGlassController.CaptureRegion? a, LiquidGlassController.CaptureRegion? b)
     {
-        if (a.HasValue != b.HasValue) return false;
-        if (!a.HasValue) return true;
-        var r1 = a.Value;
-        var r2 = b!.Value;
+        if (a is not { } r1 || b is not { } r2) return !a.HasValue && !b.HasValue;
         return r1.X == r2.X
             && r1.Y == r2.Y
             && r1.Width == r2.Width
@@ -906,6 +904,8 @@ public partial class SpotlightWindow
 
     private bool IsSystemTransparencyEnabled()
     {
+        if (_systemTransparencyOverride != null) return _systemTransparencyOverride();
+
         long now = Environment.TickCount64;
         if (_cachedSystemTransparency.HasValue && now - _lastTransparencyCheckTicks < 5000)
             return _cachedSystemTransparency.Value;

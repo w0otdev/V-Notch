@@ -61,14 +61,14 @@ VN_EXPORT int32_t __stdcall vn_lyrics_strip_title_extras(
     char16_t* out_buf,
     int32_t out_cap,
     int32_t* out_written) noexcept;
-extern "C" int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(
+VN_EXPORT int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(
     const char16_t* raw_text,
     int32_t raw_len,
     uint8_t strip_xml_tags,
     char16_t* out_buf,
     int32_t out_cap,
     int32_t* out_written) noexcept;
-extern "C" int32_t __stdcall vn_youtube_subtitle_clamp_timestamp_ticks(
+VN_EXPORT int32_t __stdcall vn_youtube_subtitle_clamp_timestamp_ticks(
     int64_t raw_ms,
     double raw_seconds,
     uint8_t use_seconds,

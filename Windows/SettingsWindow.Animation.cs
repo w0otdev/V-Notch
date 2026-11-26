@@ -14,6 +14,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using VNotch.Controllers;
 using VNotch.Controls;
+using VNotch.Interop;
 using VNotch.Models;
 using VNotch.Modules;
 using VNotch.Presenters;
@@ -37,7 +38,7 @@ public partial class SettingsWindow
         public double StartTranslateY;
     }
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static unsafe partial int vn_ui_compute_progressive_blur_cascade(
         int itemCount,
         int baseDelayMs,

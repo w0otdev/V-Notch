@@ -8,12 +8,25 @@
 
 namespace vnotch::com {
 
-struct Guard {
+struct SrwExclusiveGuard {
     SRWLOCK* lock;
-    explicit Guard(SRWLOCK* l) noexcept : lock(l) { AcquireSRWLockExclusive(lock); }
-    Guard(const Guard&) = delete;
-    Guard& operator=(const Guard&) = delete;
-    ~Guard() { ReleaseSRWLockExclusive(lock); }
+    explicit SrwExclusiveGuard(SRWLOCK* l) noexcept : lock(l) { AcquireSRWLockExclusive(lock); }
+    SrwExclusiveGuard(const SrwExclusiveGuard&) = delete;
+    SrwExclusiveGuard& operator=(const SrwExclusiveGuard&) = delete;
+    SrwExclusiveGuard(SrwExclusiveGuard&&) = delete;
+    SrwExclusiveGuard& operator=(SrwExclusiveGuard&&) = delete;
+    ~SrwExclusiveGuard() { ReleaseSRWLockExclusive(lock); }
+};
+using Guard = SrwExclusiveGuard;
+
+struct SrwSharedGuard {
+    SRWLOCK* lock;
+    explicit SrwSharedGuard(SRWLOCK* l) noexcept : lock(l) { AcquireSRWLockShared(lock); }
+    SrwSharedGuard(const SrwSharedGuard&) = delete;
+    SrwSharedGuard& operator=(const SrwSharedGuard&) = delete;
+    SrwSharedGuard(SrwSharedGuard&&) = delete;
+    SrwSharedGuard& operator=(SrwSharedGuard&&) = delete;
+    ~SrwSharedGuard() { ReleaseSRWLockShared(lock); }
 };
 
 inline INIT_ONCE g_mta_once = INIT_ONCE_STATIC_INIT;
@@ -35,6 +48,14 @@ struct ComPtr {
     ComPtr() = default;
     ComPtr(const ComPtr&) = delete;
     ComPtr& operator=(const ComPtr&) = delete;
+    ComPtr(ComPtr&& other) noexcept : ptr(std::exchange(other.ptr, nullptr)) {}
+    ComPtr& operator=(ComPtr&& other) noexcept {
+        if (this != &other) {
+            Reset();
+            ptr = std::exchange(other.ptr, nullptr);
+        }
+        return *this;
+    }
     ~ComPtr() { Reset(); }
     void Reset() noexcept {
         if (ptr) {
@@ -47,6 +68,14 @@ struct ComPtr {
         return &ptr;
     }
     T** put() noexcept { return Put(); }
+    // Takes ownership of an already-AddRef'd pointer; releases any previous reference.
+    void Attach(T* owned) noexcept {
+        Reset();
+        ptr = owned;
+    }
+    T* Detach() noexcept {
+        return std::exchange(ptr, nullptr);
+    }
     // Takes a new reference on a borrowed pointer; the previous reference (if any) is released.
     void Assign(T* borrowed) noexcept {
         if (borrowed) borrowed->AddRef();

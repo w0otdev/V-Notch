@@ -100,15 +100,25 @@ public:
             pattern.assign(current_dir);
             pattern.append(u"\\*");
 
+            struct FindHandle {
+                HANDLE handle = INVALID_HANDLE_VALUE;
+                explicit FindHandle(HANDLE h) noexcept : handle(h) {}
+                FindHandle(const FindHandle&) = delete;
+                FindHandle& operator=(const FindHandle&) = delete;
+                ~FindHandle() noexcept {
+                    if (handle != INVALID_HANDLE_VALUE) ::FindClose(handle);
+                }
+            };
+
             WIN32_FIND_DATAW fd{};
-            HANDLE h_find = ::FindFirstFileExW(
+            FindHandle find_guard(::FindFirstFileExW(
                 reinterpret_cast<LPCWSTR>(pattern.c_str()),
                 FindExInfoBasic,
                 &fd,
                 FindExSearchNameMatch,
                 nullptr,
-                FIND_FIRST_EX_LARGE_FETCH);
-            if (h_find == INVALID_HANDLE_VALUE)
+                FIND_FIRST_EX_LARGE_FETCH));
+            if (find_guard.handle == INVALID_HANDLE_VALUE)
             {
                 continue;
             }
@@ -163,9 +173,7 @@ public:
                         written += entry_len;
                     }
                 }
-            } while (::FindNextFileW(h_find, &fd) != 0);
-
-            ::FindClose(h_find);
+            } while (::FindNextFileW(find_guard.handle, &fd) != 0);
         }
 
         *out_written = written;
@@ -182,7 +190,7 @@ public:
 extern "C"
 {
 
-VN_EXPORT int32_t vn_app_search_provider_classify_target(
+VN_EXPORT int32_t __stdcall vn_app_search_provider_classify_target(
     const char16_t* path_ptr, int32_t path_len,
     const char16_t* app_id_ptr, int32_t app_id_len,
     uint8_t is_unc,

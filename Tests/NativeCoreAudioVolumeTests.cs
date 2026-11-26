@@ -1,10 +1,21 @@
+using System.Runtime.InteropServices;
+using VNotch.Interop;
 using VNotch.Services;
 using Xunit;
 
 namespace VNotch.Tests;
 
-public sealed class NativeCoreAudioVolumeTests(Xunit.Abstractions.ITestOutputHelper output)
+public sealed partial class NativeCoreAudioVolumeTests(Xunit.Abstractions.ITestOutputHelper output)
 {
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_volume_source_destroy(long handle);
+
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_volume_endpoint_open(long source, out long handle, out int hresult);
+
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_volume_endpoint_close(long handle);
+
     // Read-only: the machine's volume and mute state are never changed.
     [Fact]
     public void DefaultEndpointReadsWithinRangeAndSurvivesRefresh()
@@ -29,5 +40,20 @@ public sealed class NativeCoreAudioVolumeTests(Xunit.Abstractions.ITestOutputHel
         service.Dispose();
         service.Dispose();
         Assert.False(service.IsAvailable);
+    }
+
+    [Fact]
+    public void RepeatedServiceCyclesAndInvalidHandlesDoNotLeakOrCrash()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            using var service = new VolumeService();
+            _ = service.IsAvailable;
+        }
+
+        Assert.Equal((int)NativeStatus.InvalidArgument, vn_volume_source_destroy(0));
+        Assert.Equal((int)NativeStatus.InvalidArgument, vn_volume_source_destroy(-1));
+        Assert.Equal((int)NativeStatus.InvalidArgument, vn_volume_endpoint_open(0, out _, out _));
+        Assert.Equal((int)NativeStatus.InvalidArgument, vn_volume_endpoint_close(0));
     }
 }

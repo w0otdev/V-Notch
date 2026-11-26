@@ -215,7 +215,7 @@ namespace vnotch::services
 using Ranker = vnotch::services::SpotlightRanker;
 using Text = std::u16string_view;
 
-VN_EXPORT int32_t vn_spotlight_ranker_score(const char16_t* display, int32_t display_len,
+VN_EXPORT int32_t __stdcall vn_spotlight_ranker_score(const char16_t* display, int32_t display_len,
     const char16_t* raw, int32_t raw_len, const char16_t* subtitle, int32_t subtitle_len,
     const char16_t* display_subtitle, int32_t display_subtitle_len, const char16_t* target, int32_t target_len,
     int32_t kind, const char16_t* query, int32_t query_len, double* out_score) noexcept
@@ -240,7 +240,7 @@ VN_EXPORT int32_t vn_spotlight_ranker_score(const char16_t* display, int32_t dis
     } catch (...) { return VN_ERR_FAIL; }
 }
 
-VN_EXPORT int32_t vn_spotlight_prepare_app(const char16_t* display, int32_t display_len,
+VN_EXPORT int32_t __stdcall vn_spotlight_prepare_app(const char16_t* display, int32_t display_len,
     const char16_t* raw, int32_t raw_len, const char16_t* subtitle, int32_t subtitle_len,
     const char16_t* target, int32_t target_len, char16_t* buffer, int32_t capacity,
     VnAppRankRow* row, int32_t* written) noexcept
@@ -270,7 +270,7 @@ VN_EXPORT int32_t vn_spotlight_prepare_app(const char16_t* display, int32_t disp
     } catch (...) { return VN_ERR_FAIL; }
 }
 
-VN_EXPORT int32_t vn_spotlight_rank_apps(const VnAppRankRow* rows, int32_t count,
+VN_EXPORT int32_t __stdcall vn_spotlight_rank_apps(const VnAppRankRow* rows, int32_t count,
     const char16_t* arena, int32_t arena_len, const char16_t* query, int32_t query_len,
     VnAppRankMatch* matches, int32_t limit, int32_t* found) noexcept
 {

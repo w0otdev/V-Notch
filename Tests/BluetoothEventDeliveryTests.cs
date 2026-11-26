@@ -69,4 +69,71 @@ public sealed class BluetoothEventDeliveryTests
             .Invoke(service, [null, new object()]);
         Assert.False((bool)typeof(BluetoothMonitorService).GetField("_isInitialEnumerationComplete", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!);
     });
+
+    [Fact]
+    public void NullStoppedCallbackCannotStartAStoppedMonitor() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var service = new BluetoothMonitorService();
+        typeof(BluetoothMonitorService).GetMethod("Watcher_Stopped", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(service, [null, new object()]);
+        await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+        Assert.Null(typeof(BluetoothMonitorService).GetField("_watcher", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service));
+    });
+
+    [Fact]
+    public void UnexpectedStopsBackOffExponentiallyAndStopAtCap() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        var recordedDelays = new List<TimeSpan>();
+        int restarts = 0;
+        var dispatcher = Dispatcher.CurrentDispatcher;
+
+        using var service = new BluetoothMonitorService(
+            dispatcher,
+            (delay, ct) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                recordedDelays.Add(delay);
+                return Task.CompletedTask;
+            },
+            () => restarts++);
+
+        for (int i = 0; i < BluetoothMonitorService.MaxConsecutiveRestarts; i++)
+        {
+            Assert.True(service.TryScheduleRestartForTest());
+            await Task.Delay(15);
+            await dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+        }
+
+        Assert.False(service.TryScheduleRestartForTest());
+        Assert.Equal(BluetoothMonitorService.MaxConsecutiveRestarts, restarts);
+        Assert.Equal(
+            [TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(1000), TimeSpan.FromMilliseconds(2000), TimeSpan.FromMilliseconds(4000), TimeSpan.FromMilliseconds(8000)],
+            recordedDelays);
+        Assert.Equal(TimeSpan.FromMilliseconds(30_000), BluetoothMonitorService.ComputeRestartDelay(10));
+    });
+
+    [Fact]
+    public void StopAndDisposeCancelPendingDelayedRestart() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        var delayStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delayCanceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int restarts = 0;
+
+        using var service = new BluetoothMonitorService(
+            Dispatcher.CurrentDispatcher,
+            async (_, ct) =>
+            {
+                delayStarted.TrySetResult();
+                try { await Task.Delay(Timeout.InfiniteTimeSpan, ct); }
+                catch (OperationCanceledException) { delayCanceled.TrySetResult(); throw; }
+            },
+            () => restarts++);
+
+        Assert.True(service.TryScheduleRestartForTest());
+        await delayStarted.Task;
+        service.Dispose();
+        await delayCanceled.Task;
+        await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+        Assert.Equal(0, restarts);
+    });
 }

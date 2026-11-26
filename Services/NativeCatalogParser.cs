@@ -1,18 +1,19 @@
 using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Text;
+using VNotch.Interop;
 
 namespace VNotch.Services;
 
 internal static partial class NativeCatalogParser
 {
     internal readonly record struct Selection(string? Text, string? Key, long Id, int ApiCode, int Score);
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_catalog_select_utf8(ReadOnlySpan<byte> bytes, int length, int kind,
         ReadOnlySpan<char> title, int titleLength, ReadOnlySpan<char> artist, int artistLength,
         ReadOnlySpan<char> album, int albumLength, long milliseconds, ReadOnlySpan<byte> context, int contextLength, long candidateId, Span<char> output, int capacity, out int written,
         Span<char> key, int keyCapacity, out int keyWritten, out long id, out int apiCode, out int score);
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_youtube_extract_api_key_utf8(ReadOnlySpan<byte> bytes, int length, Span<char> output, int capacity, out int written);
 
     internal static Selection Select(ReadOnlySpan<byte> bytes, int kind, string title, string artist, long milliseconds = 0, string? album = null,
@@ -23,7 +24,7 @@ internal static partial class NativeCatalogParser
         int status = vn_catalog_select_utf8(bytes, bytes.Length, kind, title, title.Length, artist, artist.Length,
             album.AsSpan(), album?.Length ?? 0, milliseconds, context, context.Length, candidateId, output, output.Length, out int length, key, key.Length,
             out int keyLength, out long id, out int code, out int score);
-        if (status == -2 && length is >= 0 and <= YouTubeMetadataParsing.MaxJsonResponseBytes && keyLength is >= 0 and <= YouTubeMetadataParsing.MaxJsonResponseBytes)
+        if (status == (int)NativeStatus.BufferTooSmall && length is >= 0 and <= YouTubeMetadataParsing.MaxJsonResponseBytes && keyLength is >= 0 and <= YouTubeMetadataParsing.MaxJsonResponseBytes)
         {
             char[]? outputBuffer = null, keyBuffer = null;
             try
@@ -32,7 +33,7 @@ internal static partial class NativeCatalogParser
                 status = vn_catalog_select_utf8(bytes, bytes.Length, kind, title, title.Length, artist, artist.Length,
                     album.AsSpan(), album?.Length ?? 0, milliseconds, context, context.Length, candidateId, outputBuffer, outputBuffer.Length, out length,
                     keyBuffer, keyBuffer.Length, out keyLength, out id, out code, out score);
-                return status == 0 ? new(length == 0 ? null : new string(outputBuffer, 0, length), keyLength == 0 ? null : new string(keyBuffer, 0, keyLength), id, code, score) : default;
+                return status == (int)NativeStatus.Ok ? new(length == 0 ? null : new string(outputBuffer, 0, length), keyLength == 0 ? null : new string(keyBuffer, 0, keyLength), id, code, score) : default;
             }
             finally
             {
@@ -40,7 +41,7 @@ internal static partial class NativeCatalogParser
                 if (keyBuffer != null) ArrayPool<char>.Shared.Return(keyBuffer);
             }
         }
-        if (status != 0) return default;
+        if (status != (int)NativeStatus.Ok) return default;
         return new(length == 0 ? null : new string(output[..length]), keyLength == 0 ? null : new string(key[..keyLength]), id, code, score);
     }
 

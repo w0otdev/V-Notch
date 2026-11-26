@@ -38,8 +38,14 @@ public sealed class BatterySourceTests
 
     private static BatteryInfo SystemBattery() => new()
     {
-        Percentage = 87, HasBattery = true, IsCharging = true, IsPluggedIn = true,
-        PowerWatts = 30, HasPowerRate = true, RemainingMinutes = 60, IsBatterySaver = true
+        Percentage = 87,
+        HasBattery = true,
+        IsCharging = true,
+        IsPluggedIn = true,
+        PowerWatts = 30,
+        HasPowerRate = true,
+        RemainingMinutes = 60,
+        IsBatterySaver = true
     };
 
     [Fact]
@@ -96,5 +102,14 @@ public sealed class BatterySourceTests
     {
         Assert.Equal(-1, BluetoothBatteryReader.ParsePercentage(Array.Empty<byte>()));
         Assert.Equal(-1, BluetoothBatteryReader.ParsePercentage(new byte[] { 50, 0 }));
+    }
+
+    [Fact]
+    public void BatteryModule_EmitUpdate_AvoidsAsyncVoid()
+    {
+        var method = typeof(VNotch.Modules.BatteryModule).GetMethod(
+            "EmitUpdate",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        Assert.Null(System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Runtime.CompilerServices.AsyncStateMachineAttribute>(method));
     }
 }

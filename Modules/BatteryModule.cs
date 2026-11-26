@@ -62,10 +62,15 @@ public class BatteryModule : NotchModuleBase
             EmitUpdate();
     }
 
-    private async void EmitUpdate()
+    private void EmitUpdate()
     {
         if (_updating) return;
         _updating = true;
+        EmitUpdateAsync().SafeFireAndForget("BATTERY");
+    }
+
+    private async Task EmitUpdateAsync()
+    {
         try
         {
             int version;

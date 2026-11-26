@@ -94,7 +94,7 @@ public partial class SettingsWindow
             return;
 
         _recommendedPerfPresetStarted = true;
-        _ = DetectRecommendedPerformancePresetAsync();
+        DetectRecommendedPerformancePresetAsync().SafeFireAndForget("SETTINGS-PERF-DETECT");
     }
 
     private async Task DetectRecommendedPerformancePresetAsync()
@@ -552,12 +552,13 @@ public partial class SettingsWindow
         target.BeginAnimation(property, anim);
     }
 
-    private async void PerformancePresetRow_Click(object sender, RoutedEventArgs e)
+    private void PerformancePresetRow_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: int selectionId })
             return;
 
-        await SelectPerformancePresetItemAsync(selectionId, _translationDownload?.Token ?? CancellationToken.None);
+        SelectPerformancePresetItemAsync(selectionId, _translationDownload?.Token ?? CancellationToken.None)
+            .SafeFireAndForget("SETTINGS-PERF-PRESET");
     }
 
     internal Task<bool> SelectPerformancePresetItemAsync(int selectionId, CancellationToken ct = default)

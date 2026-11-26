@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using VNotch.Interop;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
@@ -9,13 +10,13 @@ internal sealed partial class SpotlightPreferences
 {
     public const int MaxPinnedApps = 10;
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_prefs_has_valid_folder_syntax(
         ReadOnlySpan<char> folderPtr,
         int folderLen,
         out byte outValid);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_prefs_is_path_under_folder(
         ReadOnlySpan<char> pathPtr,
         int pathLen,
@@ -23,7 +24,7 @@ internal sealed partial class SpotlightPreferences
         int folderLen,
         out byte outIsUnder);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_prefs_compute_score(
         double baseScore,
         ReadOnlySpan<char> queryPtr,
@@ -36,6 +37,7 @@ internal sealed partial class SpotlightPreferences
     private readonly object _gate = new();
     private readonly string _path;
     private State? _state;
+    private bool _canSave = true;
     private volatile string[]? _excludedFoldersSnapshot;
     private string? _pendingSave;
     private bool _saving;
@@ -67,8 +69,19 @@ internal sealed partial class SpotlightPreferences
             try
             {
                 if (File.Exists(_path)) _state = JsonSerializer.Deserialize<State>(File.ReadAllText(_path));
+                _canSave = true;
             }
-            catch (Exception ex) { RuntimeLog.Error("SPOTLIGHT-PREFERENCES", ex, "Failed to load preferences"); }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException or JsonException)
+            {
+                RuntimeLog.Error("SPOTLIGHT-PREFERENCES", ex, "Failed to load preferences");
+                _canSave = true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (_canSave) RuntimeLog.Error("SPOTLIGHT-PREFERENCES", ex, "Preferences temporarily unreadable; preserving file on disk");
+                _canSave = false;
+                return new State();
+            }
             _state ??= new State();
             _state.Apps ??= new();
             _state.ExcludedFolders ??= new();
@@ -139,7 +152,9 @@ internal sealed partial class SpotlightPreferences
         if (item.Kind != SpotlightResultKind.Application) return false;
         lock (_gate)
         {
-            var apps = Data.Apps;
+            var state = Data;
+            if (!_canSave) return false;
+            var apps = state.Apps;
             bool alreadyPinned = false;
             int pinnedCount = 0;
             for (int i = 0; i < apps.Count; i++)
@@ -193,7 +208,9 @@ internal sealed partial class SpotlightPreferences
 
         lock (_gate)
         {
-            Data.ExcludedFolders = normalized;
+            var state = Data;
+            if (!_canSave) return;
+            state.ExcludedFolders = normalized;
             _excludedFoldersSnapshot = null;
             Save();
         }
@@ -205,7 +222,9 @@ internal sealed partial class SpotlightPreferences
         string norm = NormalizeFolder(folder);
         lock (_gate)
         {
-            var list = Data.ExcludedFolders;
+            var state = Data;
+            if (!_canSave) return;
+            var list = state.ExcludedFolders;
             for (int i = 0; i < list.Count; i++)
             {
                 if (list[i].Equals(norm, StringComparison.OrdinalIgnoreCase))
@@ -226,7 +245,9 @@ internal sealed partial class SpotlightPreferences
         string norm = NormalizeFolder(folder);
         lock (_gate)
         {
-            int removed = Data.ExcludedFolders.RemoveAll(f => f.Equals(norm, StringComparison.OrdinalIgnoreCase));
+            var state = Data;
+            if (!_canSave) return false;
+            int removed = state.ExcludedFolders.RemoveAll(f => f.Equals(norm, StringComparison.OrdinalIgnoreCase));
             _excludedFoldersSnapshot = null;
             if (removed == 0) return false;
             Save();
@@ -317,7 +338,8 @@ internal sealed partial class SpotlightPreferences
 
     private void Save()
     {
-        _pendingSave = JsonSerializer.Serialize(Data);
+        if (!_canSave || _state == null) return;
+        _pendingSave = JsonSerializer.Serialize(_state);
         if (_saving) return;
         _saving = true;
         _saveTask = Task.Run(() =>
@@ -331,10 +353,11 @@ internal sealed partial class SpotlightPreferences
                     json = _pendingSave;
                     _pendingSave = null;
                 }
-                string temp = _path + ".tmp";
+                string temp = $"{_path}.{Guid.NewGuid():N}.tmp";
                 try
                 {
-                    Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+                    string? directory = Path.GetDirectoryName(_path);
+                    if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
                     File.WriteAllText(temp, json);
                     File.Move(temp, _path, true);
                 }

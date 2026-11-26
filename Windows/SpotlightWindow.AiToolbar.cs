@@ -19,15 +19,19 @@ public partial class SpotlightWindow
         AiMetadata.Text = Loc.Get("spotlight.ai.metadata", _aiHistory.Count, _aiHistory.Sum(m => m.Content.Length));
         AiCopyButton.IsEnabled = _aiHistory.Count > 0;
     }
-    private async void AiBack_Click(object sender, RoutedEventArgs e)
+    private void AiBack_Click(object sender, RoutedEventArgs e)
     {
         if (AiHistoryPanel.Visibility == Visibility.Visible)
         {
-            await TransitionAiPageAsync(() => { CloseAiHistory(); RefreshAiPanel(); });
+            TransitionAiPageAsync(() => { CloseAiHistory(); RefreshAiPanel(); }).SafeFireAndForget("SPOTLIGHT-AI");
         }
-        else await TransitionAiPageAsync(ToggleAiMode);
+        else TransitionAiPageAsync(ToggleAiMode).SafeFireAndForget("SPOTLIGHT-AI");
     }
-    private async void AiCopy_Click(object sender, RoutedEventArgs e)
+
+    private void AiCopy_Click(object sender, RoutedEventArgs e) =>
+        CopyAiConversationAsync().SafeFireAndForget("SPOTLIGHT-AI");
+
+    private async Task CopyAiConversationAsync()
     {
         string text;
         try
@@ -71,7 +75,7 @@ public partial class SpotlightWindow
                 AiCopyButton.RenderTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, pop);
             }
             await System.Threading.Tasks.Task.Delay(1800, CancellationToken.None);
-            if (version == _aiCopyFeedbackVersion)
+            if (!_allowClose && version == _aiCopyFeedbackVersion)
             {
                 AiCopyButton.Content = _aiCopyOriginalContent;
                 _aiCopyOriginalContent = null;

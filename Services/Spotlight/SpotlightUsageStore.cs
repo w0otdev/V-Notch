@@ -1,13 +1,14 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using VNotch.Interop;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
 internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposable
 {
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_usage_compute_boost(
         int count,
         long lastLaunchedUtcTicks,
@@ -15,7 +16,7 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
         byte remembered,
         out double outBoost);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_usage_is_allowed_app_history_target(
         ReadOnlySpan<char> targetPtr, int targetLen,
         ReadOnlySpan<char> startMenuPtr, int startMenuLen,
@@ -173,7 +174,7 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
         { RuntimeLog.Warn(LogTag, $"Could not flush preferences: {ex.Message}"); }
     }
 
-    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+    public void Dispose() => Task.Run(() => DisposeAsync().AsTask()).GetAwaiter().GetResult();
 
     internal double GetBoostNormalized(string id, string normalizedQuery)
     {

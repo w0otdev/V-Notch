@@ -20,6 +20,12 @@ public sealed partial class NativeMicrophoneProbeTests
     [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_keep")]
     private static unsafe partial int Keep(long handle, uint* processIds, int count, out int remaining);
 
+    [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_clear")]
+    private static partial int Clear(long handle);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_get_process_id")]
+    private static partial int GetProcessId(long handle, int index, out uint processId);
+
     [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_sample")]
     private static partial int Sample(long handle, out byte hasActive, out float peak, out byte anyInvalid);
 
@@ -48,9 +54,26 @@ public sealed partial class NativeMicrophoneProbeTests
     }
 
     [Fact]
+    public unsafe void RepeatedCreateRebuildDestroyCyclesAreSafe()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            if (Create(&Ignore, 0, out long handle, out _) != 0) return;
+            Assert.Equal(0, Rebuild(handle, out _, out _));
+            Assert.Equal(0, Clear(handle));
+            Assert.Equal(0, Destroy(handle));
+            Assert.Equal(0, Destroy(handle)); // Idempotent destroy on stale handle.
+            Assert.NotEqual(0, Rebuild(handle, out _, out _));
+        }
+    }
+
+    [Fact]
     public unsafe void InvalidHandlesAreRejectedWithoutCrashing()
     {
         Assert.NotEqual(0, Rebuild(0, out _, out _));
+        Assert.NotEqual(0, Clear(0));
+        Assert.NotEqual(0, GetProcessId(0, 0, out _));
+        Assert.NotEqual(0, Keep(0, null, 0, out _));
         Assert.NotEqual(0, Sample(12345, out _, out _, out _));
         Assert.NotEqual(0, Destroy(0));
     }
