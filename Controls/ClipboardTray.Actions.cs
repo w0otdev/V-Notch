@@ -25,31 +25,34 @@ public sealed partial class ClipboardTray
         return false;
     }
 
-    private async void CardAction_Click(object sender, RoutedEventArgs e)
+    private void CardAction_Click(object sender, RoutedEventArgs e)
     {
         e.Handled = true;
         _dragStart = null; _pressedCard = null;
         if (_controller == null || sender is not Button { DataContext: ClipboardCardViewModel card, Tag: string action }) return;
-        await SafeAsync(async () =>
-        {
-            switch (action)
-            {
-                case "toggleReveal":
-                    if (card.IsRevealed) card.Hide();
-                    else await card.RevealAsync(_controller.Store);
-                    break;
-                case "details": await ShowDetailsAsync(card); break;
-                case "pin": await _controller.Store.UpdateAsync(card.Entry.Id, pinned: !card.Entry.IsPinned); break;
-                case "archive": await _controller.Store.UpdateAsync(card.Entry.Id, archived: !card.Entry.IsArchived); break;
-                case "delete": await ConfirmDeleteAsync([card]); break;
-                case "movePersonal":
-                    if (!_controller.Store.IsPersonalUnlocked) { SelectCategory("Personal"); _moveToPersonal = card.Entry.Id; }
-                    else await _controller.Store.MovePersonalAsync(card.Entry.Id, !card.Entry.IsPersonal);
-                    break;
-                case "groups": await ShowGroupChoicesAsync(card); break;
-            }
-        });
+        ExecuteCardActionAsync(card, action).SafeFireAndForget("CLIPBOARD-UI");
     }
+
+    private Task ExecuteCardActionAsync(ClipboardCardViewModel card, string action) => SafeAsync(async () =>
+    {
+        if (_controller == null) return;
+        switch (action)
+        {
+            case "toggleReveal":
+                if (card.IsRevealed) card.Hide();
+                else await card.RevealAsync(_controller.Store);
+                break;
+            case "details": await ShowDetailsAsync(card); break;
+            case "pin": await _controller.Store.UpdateAsync(card.Entry.Id, pinned: !card.Entry.IsPinned); break;
+            case "archive": await _controller.Store.UpdateAsync(card.Entry.Id, archived: !card.Entry.IsArchived); break;
+            case "delete": await ConfirmDeleteAsync([card]); break;
+            case "movePersonal":
+                if (!_controller.Store.IsPersonalUnlocked) { SelectCategory("Personal"); _moveToPersonal = card.Entry.Id; }
+                else await _controller.Store.MovePersonalAsync(card.Entry.Id, !card.Entry.IsPersonal);
+                break;
+            case "groups": await ShowGroupChoicesAsync(card); break;
+        }
+    });
 
     private async Task ShowGroupChoicesAsync(ClipboardCardViewModel card)
     {

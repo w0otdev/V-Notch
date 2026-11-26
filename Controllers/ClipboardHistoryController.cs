@@ -26,7 +26,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         {
             ready.SetResult(Dispatcher.CurrentDispatcher);
             Dispatcher.Run();
-        }) { Name = "VNotch clipboard reader", IsBackground = true };
+        })
+        { Name = "VNotch clipboard reader", IsBackground = true };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         return ready.Task;
@@ -45,7 +46,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     private uint _pendingSequence;
     private bool _isWritingClipboard;
     private readonly SemaphoreSlim _clipboardWriteGate = new(1, 1);
-    private bool _disposed;
+    private volatile bool _disposed;
+    private readonly object _disposeGate = new();
     private Task? _disposeTask;
     private string[] _clipboardExportPaths = [];
     private uint _personalClipboardSequence;
@@ -360,7 +362,19 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
             IReadOnlyList<ClipboardEntry> entries = result.Entries.Count != 0 ? result.Entries : singleOrEmpty;
             if (capture.TargetCategory is string category && entries.Count > 0)
                 await AssignCategoryManyAsync(entries, category);
-            if (result.NeedsApproval) Dispatch(() => ApprovalRequired?.Invoke(capture, result.ByteSize));
+            if (result.NeedsApproval && !_disposed)
+            {
+                // Backpressure the capture consumer while the UI is busy: a pending dispatcher
+                // callback owns the entire payload just like a queued approval does.
+                try
+                {
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        if (!_disposed) ApprovalRequired?.Invoke(capture, result.ByteSize);
+                    }, DispatcherPriority.Background).Task.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (_dispatcher.HasShutdownStarted) { }
+            }
             if ((notifyDrop || capture.SeparateFiles) && entries.Count != 0)
                 Dispatch(() => DropImported?.Invoke());
             if (!result.NeedsApproval && result.FailedCount > 0)
@@ -583,28 +597,36 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException)
         { Report("clipboard.error"); }
     }
-    private async void SessionSwitch(object sender, SessionSwitchEventArgs e)
+    private void SessionSwitch(object sender, SessionSwitchEventArgs e)
     {
         if (!_disposed && e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.SessionLogoff)
-        {
-            try { await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap(); }
-            catch (OperationCanceledException) { /* Intentionally ignored. */ }
-        }
+            LockPersonalFromLifecycleEventAsync().SafeFireAndForget("CLIPBOARD-SESSION-LOCK");
     }
-    private async void PowerModeChanged(object sender, PowerModeChangedEventArgs e)
+
+    private void PowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
         if (!_disposed && e.Mode == PowerModes.Suspend)
-        {
-            try { await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap(); }
-            catch (OperationCanceledException) { /* Intentionally ignored. */ }
-        }
+            LockPersonalFromLifecycleEventAsync().SafeFireAndForget("CLIPBOARD-POWER-LOCK");
     }
+
+    private async Task LockPersonalFromLifecycleEventAsync()
+    {
+        try { await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap(); }
+        catch (OperationCanceledException) { /* Dispatcher shut down while locking personal vault. */ }
+    }
+
     private DateTime _nextHistoryPruneUtc = DateTime.UtcNow.AddHours(1);
     private bool _pruning;
-    private async void RetentionTick(object? sender, EventArgs e)
+
+    private void RetentionTick(object? sender, EventArgs e)
     {
         if (_pruning || _disposed) return;
         _pruning = true;
+        RunRetentionTickAsync().SafeFireAndForget("CLIPBOARD-RETENTION");
+    }
+
+    private async Task RunRetentionTickAsync()
+    {
         try
         {
             var now = DateTime.UtcNow;
@@ -616,8 +638,13 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException)
-        { Report("clipboard.error"); }
-        finally { _pruning = false; }
+        {
+            Report("clipboard.error");
+        }
+        finally
+        {
+            _pruning = false;
+        }
     }
     private static bool IsTemporaryScreenshotPath(string path)
     {
@@ -643,12 +670,13 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     {
         var paths = _clipboardExportPaths;
         _clipboardExportPaths = [];
-        if (paths.Length > 0) _ = ReleaseClipboardExportsAsync(paths);
+        if (paths.Length > 0)
+            ReleaseClipboardExportsAsync(paths).SafeFireAndForget("CLIPBOARD-EXPORT-CLEANUP");
     }
     private async Task ReleaseClipboardExportsAsync(string[] paths)
     {
         try { await Store.ReleasePersonalExportsAsync(paths); }
-        catch (ObjectDisposedException) { /* Intentionally ignored. */ }
+        catch (ObjectDisposedException) { /* Store already disposed during shutdown. */ }
     }
     private void ClearPersonalClipboard()
     {
@@ -666,51 +694,60 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
-        if (!_dispatcher.CheckAccess())
-        {
-            if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished)
-            {
-                if (_disposeTask != null) return new ValueTask(_disposeTask);
-                _disposed = true;
-                SystemEvents.SessionSwitch -= SessionSwitch;
-                SystemEvents.PowerModeChanged -= PowerModeChanged;
-                _retentionTimer.Stop();
-                _retentionTimer.Tick -= RetentionTick;
-                _debounceTimer.Stop();
-                _debounceTimer.Tick -= DebounceTick;
-                _captures.Writer.TryComplete();
-                _disposeTask = DrainAsync();
-                return new ValueTask(_disposeTask);
-            }
-            return new ValueTask(_dispatcher.InvokeAsync(() => DisposeAsync().AsTask()).Task.Unwrap());
-        }
-        if (_disposeTask != null) return new ValueTask(_disposeTask);
-        ClearPersonalClipboard();
+        lock (_disposeGate)
+            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
+    }
+
+    private async Task DisposeCoreAsync()
+    {
         _disposed = true;
         SystemEvents.SessionSwitch -= SessionSwitch;
         SystemEvents.PowerModeChanged -= PowerModeChanged;
-        _retentionTimer.Stop();
         _retentionTimer.Tick -= RetentionTick;
-        _debounceTimer.Stop();
         _debounceTimer.Tick -= DebounceTick;
-        _captures.Writer.TryComplete();
-        _disposeTask = DrainAsync();
-        return new ValueTask(_disposeTask);
+        try
+        {
+            if (_dispatcher.CheckAccess())
+                StopOnDispatcher();
+            else if (!_dispatcher.HasShutdownStarted)
+            {
+                try { await _dispatcher.InvokeAsync(StopOnDispatcher, DispatcherPriority.Send).Task.ConfigureAwait(false); }
+                catch (OperationCanceledException) when (_dispatcher.HasShutdownStarted) { }
+            }
+        }
+        finally
+        {
+            _captures.Writer.TryComplete();
+            await DrainAsync().ConfigureAwait(false);
+        }
+    }
+
+    private void StopOnDispatcher()
+    {
+        _retentionTimer.Stop();
+        _debounceTimer.Stop();
+        ClearPersonalClipboard();
     }
 
     private async Task DrainAsync()
     {
-        if (_clipboardReader.IsValueCreated)
+        try
         {
-            var reader = await _clipboardReader.Value.ConfigureAwait(false);
-            reader.BeginInvokeShutdown(DispatcherPriority.Send);
+            if (_clipboardReader.IsValueCreated)
+            {
+                var reader = await _clipboardReader.Value.ConfigureAwait(false);
+                await reader.InvokeAsync(reader.InvokeShutdown, DispatcherPriority.Send).Task.ConfigureAwait(false);
+            }
         }
-        try { await _consumer.ConfigureAwait(false); }
         finally
         {
-            await _clipboardWriteGate.WaitAsync().ConfigureAwait(false);
-            try { await Store.DisposeAsync().ConfigureAwait(false); }
-            finally { _clipboardWriteGate.Release(); }
+            try { await _consumer.ConfigureAwait(false); }
+            finally
+            {
+                await _clipboardWriteGate.WaitAsync().ConfigureAwait(false);
+                try { await Store.DisposeAsync().ConfigureAwait(false); }
+                finally { _clipboardWriteGate.Release(); }
+            }
         }
     }
 }

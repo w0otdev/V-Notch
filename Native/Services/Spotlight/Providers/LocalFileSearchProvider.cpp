@@ -1,4 +1,5 @@
 #include "vnotch_common.h"
+#include "vnotch_com.h"
 #include "vnotch_handle_registry.h"
 #include <atomic>
 #include <deque>
@@ -6,9 +7,9 @@
 #include "LocalDirectoryWalk.h"
 
 // Reuse Spotlight's canonical visibility and ranking policies.
-extern "C" int32_t vn_spotlight_visibility_should_include(
+extern "C" int32_t __stdcall vn_spotlight_visibility_should_include(
     const char16_t*, int32_t, const char16_t*, int32_t, uint8_t, uint8_t, uint8_t*) noexcept;
-extern "C" int32_t vn_spotlight_ranker_score(
+extern "C" int32_t __stdcall vn_spotlight_ranker_score(
     const char16_t*, int32_t, const char16_t*, int32_t, const char16_t*, int32_t,
     const char16_t*, int32_t, const char16_t*, int32_t, int32_t, const char16_t*, int32_t, double*) noexcept;
 
@@ -24,23 +25,10 @@ struct Search {
     bool partial = false;
 };
 
-struct ExclusiveSrwLockGuard {
-    SRWLOCK* lock;
-    explicit ExclusiveSrwLockGuard(SRWLOCK& l) noexcept : lock(&l) { AcquireSRWLockExclusive(lock); }
-    ~ExclusiveSrwLockGuard() noexcept { ReleaseSRWLockExclusive(lock); }
-    ExclusiveSrwLockGuard(const ExclusiveSrwLockGuard&) = delete;
-    ExclusiveSrwLockGuard& operator=(const ExclusiveSrwLockGuard&) = delete;
-};
+using ExclusiveSrwLockGuard = vnotch::com::SrwExclusiveGuard;
+using SharedSrwLockGuard = vnotch::com::SrwSharedGuard;
 
-struct SharedSrwLockGuard {
-    SRWLOCK* lock;
-    explicit SharedSrwLockGuard(SRWLOCK& l) noexcept : lock(&l) { AcquireSRWLockShared(lock); }
-    ~SharedSrwLockGuard() noexcept { ReleaseSRWLockShared(lock); }
-    SharedSrwLockGuard(const SharedSrwLockGuard&) = delete;
-    SharedSrwLockGuard& operator=(const SharedSrwLockGuard&) = delete;
-};
-
-HandleRegistry<Search> searches;
+ImmortalHandleRegistry<Search> searches;
 
 static std::u16string_view View(std::wstring_view value) noexcept {
     return {reinterpret_cast<const char16_t*>(value.data()), value.size()};
@@ -53,10 +41,15 @@ static bool AbsoluteLocalPath(std::wstring_view path) noexcept {
 static std::wstring FullPath(std::wstring value) {
     for (auto& ch : value) if (ch == L'/') ch = L'\\';
     if (!AbsoluteLocalPath(value)) return {};
-    wchar_t buffer[32768];
-    DWORD length = GetFullPathNameW(value.c_str(), static_cast<DWORD>(std::size(buffer)), buffer, nullptr);
-    if (!length || length >= std::size(buffer)) return {};
-    return {buffer, length};
+    wchar_t stack_buf[1024];
+    DWORD length = GetFullPathNameW(value.c_str(), static_cast<DWORD>(std::size(stack_buf)), stack_buf, nullptr);
+    if (length == 0) return {};
+    if (length < std::size(stack_buf)) return {stack_buf, length};
+    std::wstring heap_buf(length, L'\0');
+    length = GetFullPathNameW(value.c_str(), length, heap_buf.data(), nullptr);
+    if (length == 0 || length >= heap_buf.size()) return {};
+    heap_buf.resize(length);
+    return heap_buf;
 }
 
 static bool SameOrBelow(std::wstring_view path, std::wstring_view root) noexcept {
@@ -83,9 +76,16 @@ static std::vector<std::wstring> SplitRoots(const char16_t* text, int32_t length
 }
 
 static bool ReadyLocalRoot(const std::wstring& root) noexcept {
-    wchar_t volume[32768];
-    if (!GetVolumePathNameW(root.c_str(), volume, static_cast<DWORD>(std::size(volume)))) return false;
-    UINT type = GetDriveTypeW(volume);
+    wchar_t stack_vol[1024];
+    LPCWSTR volume_path = stack_vol;
+    std::wstring heap_vol;
+    if (!GetVolumePathNameW(root.c_str(), stack_vol, static_cast<DWORD>(std::size(stack_vol)))) {
+        if (GetLastError() != ERROR_MORE_DATA && GetLastError() != ERROR_INSUFFICIENT_BUFFER) return false;
+        heap_vol.resize(32768);
+        if (!GetVolumePathNameW(root.c_str(), heap_vol.data(), static_cast<DWORD>(heap_vol.size()))) return false;
+        volume_path = heap_vol.c_str();
+    }
+    UINT type = GetDriveTypeW(volume_path);
     if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE) return false;
     DWORD attributes = GetFileAttributesW(root.c_str());
     return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) &&
@@ -173,7 +173,7 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_copy_results(int64_t handle,
     auto lease = lf::searches.Acquire(handle);
     auto* search = lease.get();
     if (!search) return VN_ERR_INVALID_ARG;
-    lf::SharedSrwLockGuard guard(search->lock);
+    lf::SharedSrwLockGuard guard(&search->lock);
     size_t chars = 0;
     for (const auto& result : search->results) chars += result.path.size();
     if (chars > INT32_MAX) return VN_ERR_FAIL;
@@ -222,11 +222,11 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_run(int64_t handle,
     auto* search = lease.get();
     if (!search) return VN_ERR_INVALID_ARG;
     {
-        lf::ExclusiveSrwLockGuard guard(search->lock);
+        lf::ExclusiveSrwLockGuard guard(&search->lock);
         search->results.clear();
     }
     auto commit_results = [&](std::vector<lf::Result>& local_results, bool partial = false) noexcept {
-        lf::ExclusiveSrwLockGuard guard(search->lock);
+        lf::ExclusiveSrwLockGuard guard(&search->lock);
         search->results.swap(local_results);
         search->partial = partial;
         *count = static_cast<int32_t>(search->results.size());
@@ -287,7 +287,7 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_is_partial(int64_t handle, uint
     if (!partial) return VN_ERR_INVALID_ARG;
     auto lease = lf::searches.Acquire(handle);
     if (!lease.get()) return VN_ERR_INVALID_ARG;
-    lf::SharedSrwLockGuard guard(lease.get()->lock);
+    lf::SharedSrwLockGuard guard(&lease.get()->lock);
     *partial = lease.get()->partial ? 1 : 0;
     return VN_OK;
 }
@@ -297,7 +297,7 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_get_result(int64_t handle, int3
     auto lease = lf::searches.Acquire(handle);
     auto* search = lease.get();
     if (!search || !kind || !score || index < 0) return VN_ERR_INVALID_ARG;
-    lf::SharedSrwLockGuard guard(search->lock);
+    lf::SharedSrwLockGuard guard(&search->lock);
     if (static_cast<size_t>(index) >= search->results.size()) return VN_ERR_INVALID_ARG;
     const auto& result = search->results[static_cast<size_t>(index)];
     *kind = result.kind;

@@ -19,6 +19,52 @@ namespace VNotch.Tests;
 public sealed class ClipboardTraySafetyTests
 {
     [Fact]
+    public void ApprovalQueueBoundsPayloadsAndSurvivesReattach() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        var root = Directory.CreateTempSubdirectory("vnotch-approval-");
+        try
+        {
+            await using var first = new ClipboardHistoryController(Dispatcher.CurrentDispatcher,
+                new ClipboardHistoryStore(Path.Combine(root.FullName, "first")));
+            await using var second = new ClipboardHistoryController(Dispatcher.CurrentDispatcher,
+                new ClipboardHistoryStore(Path.Combine(root.FullName, "second")));
+            using var tray = new ClipboardTray();
+            tray.Attach(first);
+            tray.Attach(first);
+            var approvals = Field<Queue<(ClipboardCapture Capture, long Size)>>(tray, "_approvals");
+            var publish = Field<Action<ClipboardCapture, long>>(first, "ApprovalRequired");
+            Assert.Single(publish.GetInvocationList());
+            for (int i = 0; i <= ClipboardTray.MaxPendingApprovals; i++)
+                publish(new ClipboardCapture { Text = i.ToString() }, long.MaxValue);
+            Assert.Equal(Enumerable.Range(0, ClipboardTray.MaxPendingApprovals).Select(i => i.ToString()),
+                approvals.Select(item => item.Capture.Text));
+            Assert.Equal(Loc.Get("clipboard.approvalQueueFull"), ((TextBlock)tray.FindName("StatusText")).Text);
+
+            tray.Attach(second);
+            Assert.Empty(approvals);
+            Assert.Null(Field<Delegate?>(first, "ApprovalRequired"));
+            publish = Field<Action<ClipboardCapture, long>>(second, "ApprovalRequired");
+            var payload = new ClipboardCapture { ImagePng = new byte[ClipboardTray.MaxApprovalPayloadBytes / 3 + 1] };
+            for (int i = 0; i < 3; i++) publish(payload, 1);
+            Assert.Equal(2, approvals.Count);
+            Invoke(tray, "SkipApproval");
+            publish(payload, 1);
+            Assert.Equal(2, approvals.Count);
+            var browserDrop = new ClipboardDropReader.Payload(payload);
+            Assert.False((bool)Invoke(tray, "TryQueueBrowserDrop", browserDrop)!);
+            Invoke(tray, "SkipApproval");
+            Assert.True((bool)Invoke(tray, "TryQueueBrowserDrop", browserDrop)!);
+            publish(payload, 1);
+            Assert.Single(approvals);
+            tray.Dispose();
+            Assert.Empty(approvals);
+            Assert.Null(Field<Delegate?>(second, "ApprovalRequired"));
+            Assert.Throws<ObjectDisposedException>(() => tray.Attach(second));
+        }
+        finally { root.Delete(true); }
+    });
+
+    [Fact]
     public void CancelDeleteRestoresListFocusAndAllowsDeletingTheSameSelectionAgain() => SharedStaTestRunner.RunAsync(async () =>
     {
         string root = Path.Combine(Path.GetTempPath(), "vnotch-delete-again-" + Guid.NewGuid().ToString("N"));

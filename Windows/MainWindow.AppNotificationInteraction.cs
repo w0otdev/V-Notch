@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using VNotch.Interop;
 using VNotch.Services;
 using static VNotch.Services.AnimationPrimitives;
 
@@ -23,7 +24,7 @@ public partial class MainWindow
         public byte Reserved2;
     }
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_appnotify_step_drag_interaction(
         ref VnAppNotifyDragState ioState,
         double pointX,
@@ -37,7 +38,7 @@ public partial class MainWindow
         out byte outMoved,
         out byte outStartedDragging);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_appnotify_eval_drag_release(
         double pointX,
         double originX,

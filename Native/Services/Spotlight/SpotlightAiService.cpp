@@ -619,7 +619,7 @@ private:
 
 } // namespace vnotch::services
 
-VN_EXPORT int32_t vn_spotlight_ai_validate_api_key(
+VN_EXPORT int32_t __stdcall vn_spotlight_ai_validate_api_key(
     const char16_t* key_ptr,
     int32_t key_len,
     uint8_t* out_valid) noexcept
@@ -633,7 +633,7 @@ VN_EXPORT int32_t vn_spotlight_ai_validate_api_key(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_spotlight_ai_resolve_provider_error(
+VN_EXPORT int32_t __stdcall vn_spotlight_ai_resolve_provider_error(
     int32_t code,
     uint8_t streaming,
     char16_t* out_key_buf,
@@ -652,7 +652,7 @@ VN_EXPORT int32_t vn_spotlight_ai_resolve_provider_error(
     return vnotch::copy_out_u16(diag, out_diag_buf, diag_cap, out_diag_len);
 }
 
-VN_EXPORT int32_t vn_spotlight_ai_resolve_stream_error(
+VN_EXPORT int32_t __stdcall vn_spotlight_ai_resolve_stream_error(
     const char16_t* label_ptr,
     int32_t label_len,
     int32_t code,

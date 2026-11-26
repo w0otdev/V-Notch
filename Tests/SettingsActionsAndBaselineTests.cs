@@ -262,6 +262,32 @@ public sealed class SettingsActionsAndBaselineTests
             }
         });
 
+    [Fact]
+    public void SettingsAsyncEventHandlersAvoidAsyncVoid()
+    {
+        string[] handlerNames =
+        [
+            "Apply_Click",
+            "Save_Click",
+            "BatteryDeviceCombo_DropDownOpened",
+            "AiUsageRefresh_Click",
+            "ViewChangelog_Click",
+            "ClearLog_Click",
+            "TranslationDownload_Click",
+            "TranslationImport_Click",
+            "TranslationRemove_Click",
+            "ImportSettings_Click",
+            "PerformancePresetRow_Click",
+            "TranslationCustomImport_Click"
+        ];
+
+        foreach (string name in handlerNames)
+        {
+            var method = typeof(SettingsWindow).GetMethod(name, PrivateFlags)!;
+            Assert.Null(method.GetCustomAttribute<System.Runtime.CompilerServices.AsyncStateMachineAttribute>());
+        }
+    }
+
     private sealed class RecordingService : ISettingsApplicationService
     {
         internal NotchSettings? Applied { get; private set; }

@@ -12,7 +12,7 @@ public struct VnMarkdownSlice
 
 public static partial class VNotchNative
 {
-    private const string DllName = "VNotch.Native.dll";
+    private const string DllName = Interop.NativeAbi.LibraryName;
 
     public const int VN_OK = (int)Interop.NativeStatus.Ok;
     public const int VN_ERR_INVALID_ARG = (int)Interop.NativeStatus.InvalidArgument;

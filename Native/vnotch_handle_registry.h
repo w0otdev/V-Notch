@@ -9,8 +9,12 @@
 
 #include <windows.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <new>
+#include <stdexcept>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -28,11 +32,15 @@ namespace vnotch
     template <typename T>
     class HandleRegistry
     {
+        static constexpr uint32_t kNoFreeSlot = 0xFFFFFFFFu;
+        static constexpr size_t kMaxSlots = 0xFFFFFFFEu;
+
         struct Slot
         {
             std::unique_ptr<T> object;
             uint32_t generation = 1;
             int32_t leases = 0;
+            uint32_t next_free = kNoFreeSlot;
             bool retired = false;
         };
 
@@ -87,6 +95,8 @@ namespace vnotch
                     doomed = std::move(slot.object);
                     slot.retired = false;
                     slot.generation = NextGeneration(slot.generation);
+                    slot.next_free = free_head_;
+                    free_head_ = static_cast<uint32_t>(index);
                 }
             }
         }
@@ -138,22 +148,26 @@ namespace vnotch
             T* object_ = nullptr;
         };
 
-        HandleRegistry() = default;
+        HandleRegistry() noexcept = default;
         HandleRegistry(const HandleRegistry&) = delete;
         HandleRegistry& operator=(const HandleRegistry&) = delete;
 
-        // Stores the object and returns its handle. May throw std::bad_alloc; the object is destroyed in that case.
+        // Stores the object and returns its handle. May throw std::bad_alloc or std::length_error.
         int64_t Add(std::unique_ptr<T> item)
         {
             LockGuard guard(&lock_);
-            for (size_t i = 0; i < slots_.size(); ++i)
+            if (free_head_ != kNoFreeSlot)
             {
-                Slot& slot = slots_[i];
-                if (slot.object == nullptr)
-                {
-                    slot.object = std::move(item);
-                    return Pack(slot.generation, i);
-                }
+                const size_t index = static_cast<size_t>(free_head_);
+                Slot& slot = slots_[index];
+                free_head_ = slot.next_free;
+                slot.next_free = kNoFreeSlot;
+                slot.object = std::move(item);
+                return Pack(slot.generation, index);
+            }
+            if (slots_.size() >= kMaxSlots)
+            {
+                throw std::length_error("HandleRegistry capacity exceeded");
             }
             slots_.emplace_back();
             Slot& slot = slots_.back();
@@ -195,6 +209,8 @@ namespace vnotch
                     doomed = std::move(slot.object);
                     slot.retired = false;
                     slot.generation = NextGeneration(slot.generation);
+                    slot.next_free = free_head_;
+                    free_head_ = static_cast<uint32_t>(index);
                 }
             }
             if (extracted != nullptr)
@@ -207,5 +223,40 @@ namespace vnotch
     private:
         SRWLOCK lock_ = SRWLOCK_INIT;
         std::vector<Slot> slots_;
+        uint32_t free_head_ = kNoFreeSlot;
     };
+
+    // Process-lifetime handle registry whose storage is intentionally never destroyed on DLL_PROCESS_DETACH.
+    // Destroying HandleRegistry<T> at process exit runs ~T() (thread joins, COM Release, FreeLibrary) under OS Loader Lock.
+    template <typename T>
+    class ImmortalHandleRegistry
+    {
+    public:
+        using Lease = typename HandleRegistry<T>::Lease;
+
+        ImmortalHandleRegistry() noexcept
+        {
+            ::new (static_cast<void*>(storage_)) HandleRegistry<T>();
+        }
+        ~ImmortalHandleRegistry() = default;
+        ImmortalHandleRegistry(const ImmortalHandleRegistry&) = delete;
+        ImmortalHandleRegistry& operator=(const ImmortalHandleRegistry&) = delete;
+
+        int64_t Add(std::unique_ptr<T> item) { return Registry().Add(std::move(item)); }
+        Lease Acquire(int64_t handle) noexcept { return Registry().Acquire(handle); }
+        bool Remove(int64_t handle, std::unique_ptr<T>* extracted = nullptr) noexcept
+        {
+            return Registry().Remove(handle, extracted);
+        }
+
+    private:
+        HandleRegistry<T>& Registry() noexcept
+        {
+            return *std::launder(reinterpret_cast<HandleRegistry<T>*>(storage_));
+        }
+
+        alignas(HandleRegistry<T>) std::byte storage_[sizeof(HandleRegistry<T>)]{};
+    };
+
+    static_assert(std::is_trivially_destructible_v<ImmortalHandleRegistry<int>>);
 }

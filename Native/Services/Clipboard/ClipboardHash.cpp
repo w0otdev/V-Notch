@@ -19,7 +19,7 @@ struct Hash {
     bool append(const uint8_t* bytes, ULONG length) noexcept { return !length || BCryptHashData(handle, const_cast<PUCHAR>(bytes), length, 0) >= 0; }
     bool finish(uint8_t* bytes) noexcept { return BCryptFinishHash(handle, bytes, 32, 0) >= 0; }
 };
-vnotch::HandleRegistry<Hash> hashes;
+vnotch::ImmortalHandleRegistry<Hash> hashes;
 bool dimensions(Hash& hash, int32_t width, int32_t height) noexcept {
     const int32_t dims[]{width, height};
     return hash.append(reinterpret_cast<const uint8_t*>(dims), sizeof(dims));
@@ -61,7 +61,14 @@ VN_EXPORT int32_t __stdcall vn_clipboard_hash_append_utf16(int64_t handle, const
         std::vector<uint8_t> storage;
         uint8_t* buffer = stack;
         if (bytes > sizeof(stack)) { storage.resize(bytes); buffer = storage.data(); }
-        struct Clear { uint8_t* bytes; size_t length; ~Clear() { SecureZeroMemory(bytes, length); } } clear{buffer, static_cast<size_t>(bytes)};
+        struct Clear {
+            uint8_t* bytes;
+            size_t length;
+            Clear(uint8_t* b, size_t l) noexcept : bytes(b), length(l) {}
+            Clear(const Clear&) = delete;
+            Clear& operator=(const Clear&) = delete;
+            ~Clear() { SecureZeroMemory(bytes, length); }
+        } clear{buffer, static_cast<size_t>(bytes)};
         if (WideCharToMultiByte(CP_UTF8, 0, text, length, reinterpret_cast<char*>(buffer), bytes, nullptr, nullptr) != bytes) return VN_ERR_FAIL;
         return hash->append(buffer, bytes) ? VN_OK : VN_ERR_FAIL;
     } catch (...) { return VN_ERR_FAIL; }
@@ -75,7 +82,9 @@ VN_EXPORT int32_t __stdcall vn_clipboard_hash_finish(int64_t handle, uint8_t* ou
 }
 VN_EXPORT int32_t __stdcall vn_clipboard_hash_bytes(const uint8_t* input, int32_t length, uint8_t* output, int32_t capacity) noexcept {
     if (length < 0 || (length && !input) || !output || capacity < 32) return VN_ERR_INVALID_ARG;
-    return BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, const_cast<PUCHAR>(input), length, output, 32) >= 0 ? VN_OK : VN_ERR_FAIL;
+    static constexpr uint8_t kEmpty = 0;
+    const uint8_t* data = length == 0 ? &kEmpty : input;
+    return BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, const_cast<PUCHAR>(data), static_cast<ULONG>(length), output, 32) >= 0 ? VN_OK : VN_ERR_FAIL;
 }
 VN_EXPORT int32_t __stdcall vn_clipboard_hash_pixels(const uint8_t* pixels, int32_t width, int32_t height, int32_t stride, uint8_t* output, int32_t capacity) noexcept {
     if (!pixels || width <= 0 || height <= 0 || width > INT32_MAX / 4 || stride < width * 4 || !output || capacity < 32 ||
@@ -116,7 +125,13 @@ VN_EXPORT int32_t __stdcall vn_clipboard_hash_image(const uint8_t* input, int32_
         const UINT stride = width * 4;
         const UINT rows = std::min<UINT>(height, 16);
         std::vector<uint8_t> pixels(static_cast<size_t>(stride) * rows);
-        struct Clear { std::vector<uint8_t>& bytes; ~Clear() { SecureZeroMemory(bytes.data(), bytes.size()); } } clear{pixels};
+        struct Clear {
+            std::vector<uint8_t>& bytes;
+            explicit Clear(std::vector<uint8_t>& b) noexcept : bytes(b) {}
+            Clear(const Clear&) = delete;
+            Clear& operator=(const Clear&) = delete;
+            ~Clear() { SecureZeroMemory(bytes.data(), bytes.size()); }
+        } clear{pixels};
         for (UINT y = 0; y < height; y += rows) {
             const UINT count = std::min(rows, height - y);
             WICRect rect{0, static_cast<INT>(y), static_cast<INT>(width), static_cast<INT>(count)};

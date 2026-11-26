@@ -999,6 +999,7 @@
   "clipboard.archive": "संग्रहित करें",
   "clipboard.unarchive": "संग्रह से वापस लाएँ",
   "clipboard.delete": "मिटाएँ",
+  "clipboard.approvalQueueFull": "अनुमोदन कतार भर गई है। यह आइटम सहेजा नहीं गया।",
   "clipboard.largeFile": "{1} की स्थानीय प्रतिलिपि सहेजें?\nकुल आकार: {0:N1} MB (50 MB से अधिक)।",
   "clipboard.dropHint": "जल्दी पिन करने के लिए फ़ाइलें या छवियां यहाँ खींचें और छोड़ें",
   "clipboard.categoryOnlyImages": "यह टैब केवल छवियों को स्वीकार करता है!",

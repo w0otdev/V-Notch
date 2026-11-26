@@ -34,6 +34,24 @@ public sealed partial class NativeBoundaryTests
     [LibraryImport(NativeAbi.LibraryName)]
     private static unsafe partial int vn_abi_query(uint capacity, NativeAbi.Info* info);
 
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_win32_keyboard_hook_uninstall(int slot);
+
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_win32_win_event_hook_uninstall(int slot);
+
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_clipboard_hash_create(out long handle);
+
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_clipboard_hash_close(long handle);
+
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_clipboard_index_create(out long handle);
+
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_clipboard_index_close(long handle);
+
     [Fact]
     public unsafe void ShippedDescriptorMatchesManagedLayoutAndRejectsShortBuffersWithoutWriting()
     {
@@ -46,7 +64,11 @@ public sealed partial class NativeBoundaryTests
         NativeAbi.Validate(info);
         Assert.Equal(24, sizeof(NativeAbi.Info));
         Assert.Equal(2u, info.Major);
+        Assert.True(info.Minor >= 1);
         var oldDescriptor = info;
+        oldDescriptor.Minor = 0;
+        Assert.Throws<BadImageFormatException>(() => NativeAbi.Validate(oldDescriptor));
+        oldDescriptor = info;
         oldDescriptor.Major = 1;
         Assert.Throws<BadImageFormatException>(() => NativeAbi.Validate(oldDescriptor));
         info.Minor = 100; // Additive releases retain this fixed descriptor and existing exports.
@@ -99,4 +121,106 @@ public sealed partial class NativeBoundaryTests
     [InlineData(false, unchecked((int)0x887A0005), (int)GlassGpuRenderOutcome.Fail)]
     public void GlassFallbackOnlyAcceptsPendingPerWindowCapture(bool windows, int hr, int outcome) =>
         Assert.Equal((GlassGpuRenderOutcome)outcome, GlassGpuResultPolicy.Classify(windows, hr));
+
+    [Fact]
+    public void Win32HooksRecycleSlotsAcrossRepeatedInstallAndDispose()
+    {
+        for (int i = 0; i < 6; i++)
+        {
+            using var hook = new Win32Interop.LowLevelKeyboardHook((_, _) => false);
+            if (!hook.Install()) return; // Restricted desktop/session without hook permission.
+            Assert.True(hook.IsInstalled);
+            hook.Dispose();
+            hook.Dispose();
+            Assert.False(hook.IsInstalled);
+        }
+
+        for (int i = 0; i < 10; i++)
+        {
+            using var winEventHook = new Win32Interop.WinEventHook(0x0003, 0x0003, (_, _) => { });
+            if (!winEventHook.Install()) return;
+            Assert.True(winEventHook.IsInstalled);
+            winEventHook.Dispose();
+            winEventHook.Dispose();
+            Assert.False(winEventHook.IsInstalled);
+        }
+
+        Assert.Equal((int)NativeStatus.InvalidArgument, vn_win32_keyboard_hook_uninstall(-1));
+        Assert.Equal((int)NativeStatus.InvalidArgument, vn_win32_keyboard_hook_uninstall(99));
+        Assert.Equal((int)NativeStatus.InvalidArgument, vn_win32_win_event_hook_uninstall(-1));
+        Assert.Equal((int)NativeStatus.InvalidArgument, vn_win32_win_event_hook_uninstall(99));
+    }
+
+    [Fact]
+    public void HandleRegistriesRecycleSlotsAndRejectStaleHandles()
+    {
+        long previousHash = 0;
+        long previousIndex = 0;
+        for (int i = 0; i < 8; i++)
+        {
+            Assert.Equal((int)NativeStatus.Ok, vn_clipboard_hash_create(out long hashHandle));
+            Assert.True(hashHandle > 0);
+            Assert.NotEqual(previousHash, hashHandle);
+            Assert.Equal((int)NativeStatus.Ok, vn_clipboard_hash_close(hashHandle));
+            Assert.Equal((int)NativeStatus.InvalidArgument, vn_clipboard_hash_close(hashHandle));
+            previousHash = hashHandle;
+
+            Assert.Equal((int)NativeStatus.Ok, vn_clipboard_index_create(out long indexHandle));
+            Assert.True(indexHandle > 0);
+            Assert.NotEqual(previousIndex, indexHandle);
+            Assert.Equal((int)NativeStatus.Ok, vn_clipboard_index_close(indexHandle));
+            Assert.Equal((int)NativeStatus.InvalidArgument, vn_clipboard_index_close(indexHandle));
+            previousIndex = indexHandle;
+        }
+    }
+
+    [Fact]
+    public void MediaPolicyNativeRoundTripsEdgeAndNormalInputs()
+    {
+        var now = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        var adDecision = MediaPolicyNative.EvaluateLikelyYouTubeAd(new MediaPolicyNative.YouTubeAdEvaluationRequest(
+            IsBrowserSession: true,
+            HasStableTrack: true,
+            LastSource: "YouTube",
+            LastPublishedSessionInstanceKey: "k1",
+            CurrentSessionInstanceKey: "k2",
+            CurrentTrack: "Sponsor Break",
+            CurrentDuration: TimeSpan.FromSeconds(15),
+            HasYouTubeWindow: true,
+            CurrentTrackMatchesYouTubeWindow: false,
+            TransitionStartedUtc: DateTime.MinValue,
+            NowUtc: now));
+        Assert.True(adDecision.ShouldHold);
+        Assert.Equal(now, adDecision.TransitionStartedUtc);
+
+        var nonCandidate = MediaPolicyNative.EvaluateLikelyYouTubeAd(
+            isBrowserSession: true,
+            hasStableTrack: true,
+            lastSource: null,
+            lastPublishedSessionInstanceKey: null,
+            currentSessionInstanceKey: null,
+            currentTrack: null,
+            currentDuration: TimeSpan.Zero,
+            hasYouTubeWindow: false,
+            currentTrackMatchesYouTubeWindow: false,
+            transitionStartedUtc: DateTime.MinValue,
+            nowUtc: now);
+        Assert.False(nonCandidate.ShouldHold);
+
+        var junkDecision = MediaPolicyNative.EvaluateYouTubeJunkMetadata(
+            isBrowserSession: true,
+            hasStableTrack: false,
+            lastSource: null,
+            hasYouTubeWindow: false,
+            transitionStartedUtc: DateTime.MinValue,
+            nowUtc: now);
+        Assert.False(junkDecision.ShouldHold);
+
+        Assert.False(MediaPolicyNative.ShouldCarryYouTubeSource(
+            isBrowserSession: false,
+            currentBrowserPlatformHint: null,
+            lastSource: null,
+            stableSource: null,
+            isCompletingAdTransition: false));
+    }
 }

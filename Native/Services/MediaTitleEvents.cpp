@@ -416,7 +416,7 @@ struct TitleWatch {
     }
 };
 
-vnotch::HandleRegistry<TitleWatch> watches;
+vnotch::ImmortalHandleRegistry<TitleWatch> watches;
 }
 
 VN_EXPORT int32_t __stdcall vn_media_title_watch_create(HANDLE signal, int64_t* handle) noexcept {

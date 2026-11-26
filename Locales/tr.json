@@ -999,6 +999,7 @@
   "clipboard.archive": "Arşivle",
   "clipboard.unarchive": "Arşivden geri yükle",
   "clipboard.delete": "Sil",
+  "clipboard.approvalQueueFull": "Onay kuyruğu dolu. Bu öğe kaydedilmedi.",
   "clipboard.largeFile": "{1} için yerel bir kopya kaydedilsin mi?\nToplam boyut: {0:N1} MB (50 MB’den fazla).",
   "clipboard.dropHint": "Hızlıca sabitlemek için dosyaları veya resimleri buraya sürükleyip bırakın",
   "clipboard.categoryOnlyImages": "Bu sekme yalnızca resimleri kabul eder!",

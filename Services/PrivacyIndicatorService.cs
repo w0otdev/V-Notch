@@ -13,7 +13,7 @@ namespace VNotch.Services;
 
 public sealed partial class PrivacyIndicatorService : IDisposable
 {
-    private const string NativeDll = "VNotch.Native.dll";
+    private const string NativeDll = VNotch.Interop.NativeAbi.LibraryName;
 
     [LibraryImport(NativeDll)]
     private static partial int vn_privacy_indicator_has_min_active_duration(
@@ -844,30 +844,56 @@ public sealed partial class PrivacyIndicatorService : IDisposable
     // keeps the topology-refresh schedule and decides which processes count as a consumer.
     private sealed unsafe partial class MicrophoneFlowProbe : IDisposable
     {
+        private sealed class MicProbeHandle : Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid
+        {
+            private GCHandle _callbackRoot;
 
-        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_create")]
+            internal MicProbeHandle(long handleValue, GCHandle callbackRoot)
+                : base(true)
+            {
+                SetHandle((nint)handleValue);
+                _callbackRoot = callbackRoot;
+            }
+
+            protected override bool ReleaseHandle()
+            {
+                long nativeHandle = handle.ToInt64();
+                if (nativeHandle > 0)
+                {
+                    NativeDestroy(nativeHandle);
+                }
+
+                if (_callbackRoot.IsAllocated)
+                {
+                    _callbackRoot.Free();
+                }
+
+                return true;
+            }
+        }
+
+        [LibraryImport(VNotch.Interop.NativeAbi.LibraryName, EntryPoint = "vn_mic_probe_create")]
         private static partial int NativeCreate(nint callback, long context, out long handle, out int hresult);
 
-        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_destroy")]
+        [LibraryImport(VNotch.Interop.NativeAbi.LibraryName, EntryPoint = "vn_mic_probe_destroy")]
         private static partial int NativeDestroy(long handle);
 
-        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_clear")]
-        private static partial int NativeClear(long handle);
+        [LibraryImport(VNotch.Interop.NativeAbi.LibraryName, EntryPoint = "vn_mic_probe_clear")]
+        private static partial int NativeClear(MicProbeHandle handle);
 
-        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_rebuild")]
-        private static partial int NativeRebuild(long handle, out int count, out int hresult);
+        [LibraryImport(VNotch.Interop.NativeAbi.LibraryName, EntryPoint = "vn_mic_probe_rebuild")]
+        private static partial int NativeRebuild(MicProbeHandle handle, out int count, out int hresult);
 
-        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_get_process_id")]
-        private static partial int NativeGetProcessId(long handle, int index, out uint processId);
+        [LibraryImport(VNotch.Interop.NativeAbi.LibraryName, EntryPoint = "vn_mic_probe_get_process_id")]
+        private static partial int NativeGetProcessId(MicProbeHandle handle, int index, out uint processId);
 
-        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_keep")]
-        private static partial int NativeKeep(long handle, uint* processIds, int count, out int remaining);
+        [LibraryImport(VNotch.Interop.NativeAbi.LibraryName, EntryPoint = "vn_mic_probe_keep")]
+        private static partial int NativeKeep(MicProbeHandle handle, uint* processIds, int count, out int remaining);
 
-        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_sample")]
-        private static partial int NativeSample(long handle, out byte hasActive, out float peak, out byte anyInvalid);
+        [LibraryImport(VNotch.Interop.NativeAbi.LibraryName, EntryPoint = "vn_mic_probe_sample")]
+        private static partial int NativeSample(MicProbeHandle handle, out byte hasActive, out float peak, out byte anyInvalid);
 
-        private long _probeHandle;
-        private GCHandle _self;
+        private MicProbeHandle? _probeHandle;
         private int _meterCount;
         private string[] _cachedCandidateNames = Array.Empty<string>();
         private bool _isTopologyValid;
@@ -920,7 +946,11 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
         private (bool HasActive, float Peak, bool AnyInvalid) SampleLocked()
         {
-            if (_probeHandle == 0 || _meterCount == 0) return (false, 0f, false);
+            if (_probeHandle is not { IsInvalid: false, IsClosed: false } || _meterCount == 0)
+            {
+                return (false, 0f, false);
+            }
+
             return NativeSample(_probeHandle, out byte hasActive, out float peak, out byte anyInvalid) == 0
                 ? (hasActive != 0, peak, anyInvalid != 0)
                 : (false, 0f, true);
@@ -957,7 +987,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             try
             {
                 EnsureProbeLocked();
-                if (_probeHandle == 0) return;
+                if (_probeHandle is not { IsInvalid: false, IsClosed: false }) return;
 
                 if (NativeRebuild(_probeHandle, out int count, out int hresult) != 0)
                 {
@@ -1008,17 +1038,16 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
         private void EnsureProbeLocked()
         {
-            if (_probeHandle != 0) return;
-            _self = GCHandle.Alloc(this);
+            if (_probeHandle is { IsInvalid: false, IsClosed: false }) return;
+            using var pending = new PendingCallbackHandle(this);
             delegate* unmanaged[Stdcall]<long, void> callback = &OnNativeInvalidated;
-            if (NativeCreate((nint)callback, GCHandle.ToIntPtr(_self), out long handle, out int hresult) != 0)
+            if (NativeCreate((nint)callback, pending.Context, out long handle, out int hresult) != 0)
             {
                 RuntimeLog.Warn("PRIVACY-MIC", $"Failed to register endpoint notification callback: 0x{hresult:X8}");
-                _self.Free();
                 return;
             }
 
-            _probeHandle = handle;
+            _probeHandle = new MicProbeHandle(handle, pending.Transfer());
         }
 
         // Runs on a Core Audio thread: only flag the topology as stale.
@@ -1045,7 +1074,11 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         private void InvalidateCacheLocked()
         {
             Volatile.Write(ref _isTopologyValid, false);
-            if (_probeHandle != 0) NativeClear(_probeHandle);
+            if (_probeHandle is { IsInvalid: false, IsClosed: false })
+            {
+                NativeClear(_probeHandle);
+            }
+
             _meterCount = 0;
         }
 
@@ -1060,10 +1093,9 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
         private void DisposeProbeLocked()
         {
-            if (_probeHandle == 0) return;
-            NativeDestroy(_probeHandle);
-            _probeHandle = 0;
-            if (_self.IsAllocated) _self.Free();
+            MicProbeHandle? handle = _probeHandle;
+            _probeHandle = null;
+            handle?.Dispose();
         }
     }
     internal sealed class MicrophoneActivityGate

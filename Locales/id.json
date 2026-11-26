@@ -999,6 +999,7 @@
   "clipboard.archive": "Arsipkan",
   "clipboard.unarchive": "Pulihkan dari Arsip",
   "clipboard.delete": "Hapus",
+  "clipboard.approvalQueueFull": "Antrean persetujuan penuh. Item ini tidak disimpan.",
   "clipboard.largeFile": "Simpan salinan lokal {1}?\nUkuran total: {0:N1} MB (lebih dari 50 MB).",
   "clipboard.dropHint": "Seret dan lepas berkas atau gambar ke sini untuk menyematkan dengan cepat",
   "clipboard.categoryOnlyImages": "Tab ini hanya menerima gambar!",

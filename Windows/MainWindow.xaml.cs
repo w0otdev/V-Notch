@@ -861,7 +861,7 @@ public partial class MainWindow : Window
             _clipboardTrayView?.BeginExit();
         if (args.TargetView != VNotch.Models.NotchView.Secondary &&
             _clipboardHistory?.Store.IsPersonalUnlocked == true)
-            _ = _clipboardHistory.LockPersonalAsync();
+            _clipboardHistory.LockPersonalAsync().SafeFireAndForget("CLIPBOARD-LOCK");
         NavTabsStackPanel.Margin = new Thickness(14, 3, 0, 0);
         // Direct view switches do not always start another presenter animation.
         // Detach its old clocks first so HoldEnd cannot override the new view.
@@ -2057,7 +2057,7 @@ public partial class MainWindow : Window
 #pragma warning disable S4036 // URI scheme is launched via Windows shell protocol
             string explorerPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
             string page = string.IsNullOrEmpty(_displayedBattery?.DeviceId) ? "ms-settings:batterysaver" : "ms-settings:bluetooth";
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(explorerPath, page) { UseShellExecute = false });
+            using var launched = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(explorerPath, page) { UseShellExecute = false });
 #pragma warning restore S4036
         }
         catch (Exception ex)

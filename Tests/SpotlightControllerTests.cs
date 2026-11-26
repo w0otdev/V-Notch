@@ -134,4 +134,35 @@ public sealed class SpotlightControllerTests
             currentTime));
     }
 
+    [Fact]
+    public void ApplySettingsAfterDispose_IsNoOp() => SharedStaTestRunner.Run(() =>
+    {
+        var controller = new SpotlightController(() => throw new InvalidOperationException("Disposed controller must not create windows"));
+        var host = new BackgroundWindow();
+        try
+        {
+            controller.Initialize(host, new NotchSettings { EnableSpotlight = false });
+            controller.Dispose();
+            controller.ApplySettings(new NotchSettings { EnableSpotlight = true });
+            Assert.False(controller.IsHotkeyRegistered);
+        }
+        finally
+        {
+            host.Close();
+        }
+    });
+
+    [Fact]
+    public void SpotlightWindow_ShutdownUnsubscribesViewModelEvents() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new SpotlightWindowFixture(new NotchSettings { NotchStyle = "default" });
+        var window = fixture.Window;
+        var vm = (VNotch.ViewModels.SpotlightViewModel)window.DataContext;
+
+        window.Shutdown();
+
+        // Adding results to the ViewModel after window shutdown must not throw or touch closed UI.
+        vm.Results.Add(new VNotch.Models.SpotlightSearchItem("app:x", VNotch.Models.SpotlightResultKind.Application, "X", "App", @"C:\x.exe"));
+        vm.SelectedResult = vm.Results[0];
+    });
 }

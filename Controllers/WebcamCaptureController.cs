@@ -383,8 +383,7 @@ public sealed class WebcamCaptureController : IDisposable
         try
         {
             frame = sender.TryAcquireLatestFrame();
-            var video = frame?.VideoMediaFrame;
-            if (video == null) return;
+            if (frame is not { VideoMediaFrame: { } video }) return;
             using var bitmap = video.SoftwareBitmap;
             if (bitmap != null) { ProcessFrame(bitmap, frameToken); return; }
             var surface = video.Direct3DSurface;
@@ -394,7 +393,7 @@ public sealed class WebcamCaptureController : IDisposable
             {
                 lock (_lifecycleLock)
                     if (!_isActive || frameToken != _fadeToken) return;
-                result = PresentSurfaceFrame?.Invoke(frame!, frameToken) ?? SurfaceFrameResult.Fallback;
+                result = PresentSurfaceFrame?.Invoke(frame, frameToken) ?? SurfaceFrameResult.Fallback;
                 if (result != SurfaceFrameResult.Fallback) _lastFrameTimestamp = Stopwatch.GetTimestamp();
             }
             if (result == SurfaceFrameResult.Transferred)

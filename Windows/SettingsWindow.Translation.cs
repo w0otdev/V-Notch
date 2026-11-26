@@ -162,7 +162,10 @@ public partial class SettingsWindow
         TranslationReadyHint.Text = Loc.Get(!enabled ? "translation.readyEnableHint" : readyKey);
     }
 
-    private async void TranslationDownload_Click(object sender, RoutedEventArgs e)
+    private void TranslationDownload_Click(object sender, RoutedEventArgs e)
+        => HandleTranslationDownloadAsync().SafeFireAndForget("TRANSLATION");
+
+    private async Task HandleTranslationDownloadAsync()
     {
         if (_translationDownload != null) { await _translationDownload.CancelAsync(); return; }
         if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.TranslationModels))
@@ -179,14 +182,20 @@ public partial class SettingsWindow
         }, "translation.connecting");
     }
 
-    private async void TranslationImport_Click(object sender, RoutedEventArgs e)
+    private void TranslationImport_Click(object sender, RoutedEventArgs e)
+        => HandleTranslationImportAsync().SafeFireAndForget("TRANSLATION");
+
+    private async Task HandleTranslationImportAsync()
     {
         var dialog = new Microsoft.Win32.OpenFileDialog { Filter = $"{_translationStore.Profile.DisplayName}|{_translationStore.Profile.Assets[0].Name}", Title = Loc.Get("translation.import") };
-        if (dialog.ShowDialog(this) == true)
-            await RunTranslationModelActionAsync(ct => _translationStore.ImportAsync(System.IO.Path.GetDirectoryName(dialog.FileName)!, ct));
+        if (dialog.ShowDialog(this) == true && System.IO.Path.GetDirectoryName(dialog.FileName) is { } directory)
+            await RunTranslationModelActionAsync(ct => _translationStore.ImportAsync(directory, ct));
     }
 
-    private async void TranslationRemove_Click(object sender, RoutedEventArgs e)
+    private void TranslationRemove_Click(object sender, RoutedEventArgs e)
+        => HandleTranslationRemoveAsync().SafeFireAndForget("TRANSLATION");
+
+    private async Task HandleTranslationRemoveAsync()
     {
         bool custom = _translationStore.Profile.IsCustom, removed = false;
         await RunTranslationModelActionAsync(async ct => { await _translationStore.RemoveAsync(ct); removed = true; });

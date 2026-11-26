@@ -2,13 +2,14 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Windows.Interop;
+using VNotch.Interop;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight.Providers;
 
 internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDisposable
 {
-    private const string NativeDll = "VNotch.Native.dll";
+    private const string NativeDll = NativeAbi.LibraryName;
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_everything_provider_compute_search_params(
@@ -379,6 +380,9 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
             {
                 continue;
             }
+
+            if ((long)nameOffset + (long)nameLen * sizeof(char) > byteCount) continue;
+            if (pathLen > 0 && (long)pathOffset + (long)pathLen * sizeof(char) > byteCount) continue;
 
             string name = new string((char*)(list + nameOffset), 0, nameLen);
             string parent = pathLen > 0 ? new string((char*)(list + pathOffset), 0, pathLen) : string.Empty;

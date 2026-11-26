@@ -1,13 +1,14 @@
 using System.Collections;
 using System.IO;
 using System.Runtime.InteropServices;
+using VNotch.Interop;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight.Providers;
 
 internal sealed partial class AppSearchProvider : ISpotlightProvider
 {
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_app_search_provider_classify_target(
         ReadOnlySpan<char> pathPtr, int pathLen,
         ReadOnlySpan<char> appIdPtr, int appIdLen,
@@ -15,7 +16,7 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
         byte existsOnDisk,
         out int outMode);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_app_search_provider_scan_start_menu(
         ReadOnlySpan<char> startMenuPtr,
         int startMenuLen,
@@ -25,6 +26,8 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
 
     private readonly object _indexGate = new();
     private Task<IReadOnlyList<SpotlightSearchItem>>? _index;
+    private Task<AppSearchIndex>? _ranking;
+    private string? _rankingLanguage;
     private DateTime _indexExpiresUtc;
     private readonly Func<IReadOnlyList<SpotlightSearchItem>> _buildIndex;
     private readonly Func<DateTime> _utcNow;
@@ -48,43 +51,37 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var apps = await WarmupAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (limit <= 0 || apps.Count == 0) return Array.Empty<SpotlightSearchItem>();
-
-        string subtitle = Loc.Get("spotlight.kind.application");
-        var matches = new List<SpotlightSearchItem>();
-        for (int i = 0; i < apps.Count; i++)
-        {
-            var app = apps[i];
-            double score = SpotlightRanker.Score(app, query);
-            if (score > 0)
-            {
-                matches.Add(app with { Subtitle = subtitle, Score = score });
-            }
-        }
-        if (matches.Count == 0) return Array.Empty<SpotlightSearchItem>();
-
-        matches.Sort(SpotlightSearchService.s_scoreAndTitleComparison);
-        int resultCount = Math.Min(limit, matches.Count);
-        var results = new SpotlightSearchItem[resultCount];
-        matches.CopyTo(0, results, 0, resultCount);
-        return results;
+        if (limit <= 0 || string.IsNullOrWhiteSpace(query)) return [];
+        var snapshot = await WarmupAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+        return snapshot.Search(query, limit, cancellationToken);
     }
 
     Task ISpotlightProvider.WarmupAsync() => WarmupAsync();
 
-    internal Task<IReadOnlyList<SpotlightSearchItem>> WarmupAsync()
+    internal Task<AppSearchIndex> WarmupAsync()
     {
         lock (_indexGate)
         {
-            if (_index == null || _index.IsCompleted && (_utcNow() >= _indexExpiresUtc || _index.IsFaulted))
+            var apps = GetAppsLocked();
+            string language = Loc.CurrentLanguage;
+            if (_ranking == null || _ranking.IsFaulted || _rankingLanguage != language)
             {
-                _index = Task.Run(_buildIndex);
-                _indexExpiresUtc = _utcNow().AddMinutes(30);
+                _rankingLanguage = language;
+                _ranking = Task.Run(async () => new AppSearchIndex(await apps.ConfigureAwait(false)));
             }
-            return _index;
+            return _ranking;
         }
+    }
+
+    private Task<IReadOnlyList<SpotlightSearchItem>> GetAppsLocked()
+    {
+        if (_index == null || _index.IsCompleted && (_utcNow() >= _indexExpiresUtc || _index.IsFaulted))
+        {
+            _index = Task.Run(_buildIndex);
+            _indexExpiresUtc = _utcNow().AddMinutes(30);
+            _ranking = null;
+        }
+        return _index;
     }
 
     private static IReadOnlyList<SpotlightSearchItem> BuildIndex()

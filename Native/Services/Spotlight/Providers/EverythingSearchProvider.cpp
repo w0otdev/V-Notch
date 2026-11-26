@@ -69,9 +69,11 @@ public:
         if (!base_ptr || offset < 0 || offset >= total_bytes) return 0;
         const int32_t max_chars = (total_bytes - offset) / static_cast<int32_t>(sizeof(char16_t));
         if (max_chars <= 0) return 0;
-        const auto* chars = reinterpret_cast<const char16_t*>(base_ptr + offset);
+        const uint8_t* cursor = base_ptr + offset;
         for (int32_t i = 0; i < max_chars; ++i) {
-            if (chars[i] == u'\0') return i;
+            char16_t ch = 0;
+            std::memcpy(&ch, cursor + static_cast<size_t>(i) * sizeof(char16_t), sizeof(char16_t));
+            if (ch == u'\0') return i;
         }
         return max_chars;
     }
@@ -174,14 +176,14 @@ public:
 
 extern "C" {
 
-VN_EXPORT int32_t vn_everything_provider_compute_search_params(
+VN_EXPORT int32_t __stdcall vn_everything_provider_compute_search_params(
     const char16_t* query,
     int32_t query_len,
     int32_t limit,
     int32_t* out_max_results,
     uint32_t* out_search_flags) noexcept {
     if (!out_max_results || !out_search_flags || (!query && query_len > 0) || query_len < 0) {
-        return VN_E_INVALID_ARG;
+        return VN_ERR_INVALID_ARG;
     }
     const std::u16string_view q(query ? query : u"", static_cast<size_t>(query_len));
     int32_t max_res = 0;
@@ -192,22 +194,22 @@ VN_EXPORT int32_t vn_everything_provider_compute_search_params(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_everything_provider_classify_item_kind(
+VN_EXPORT int32_t __stdcall vn_everything_provider_classify_item_kind(
     uint8_t is_folder,
     const char16_t* ext,
     int32_t ext_len,
     int32_t* out_kind) noexcept {
-    if (!out_kind || (!ext && ext_len > 0) || ext_len < 0) return VN_E_INVALID_ARG;
+    if (!out_kind || (!ext && ext_len > 0) || ext_len < 0) return VN_ERR_INVALID_ARG;
     const std::u16string_view sv(ext ? ext : u"", static_cast<size_t>(ext_len));
     *out_kind = vnotch::services::spotlight::providers::EverythingSearchProvider::ClassifyItemKind(is_folder != 0, sv);
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_everything_provider_compute_final_score(
+VN_EXPORT int32_t __stdcall vn_everything_provider_compute_final_score(
     double ranker_score,
     int32_t title_len,
     double* out_score) noexcept {
-    if (!out_score) return VN_E_INVALID_ARG;
+    if (!out_score) return VN_ERR_INVALID_ARG;
     *out_score = vnotch::services::spotlight::providers::EverythingSearchProvider::ComputeFinalScore(ranker_score, title_len);
     return VN_OK;
 }

@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using VNotch.Models;
 using VNotch.Services;
 using VNotch.Services.AiUsage;
@@ -146,12 +146,16 @@ public partial class SettingsWindow
         });
     }
 
-    private async void AiUsageRefresh_Click(object sender, RoutedEventArgs e)
+    private void AiUsageRefresh_Click(object sender, RoutedEventArgs e)
+        => RefreshAiUsageAsync().SafeFireAndForget("AI-USAGE-REFRESH");
+
+    private async Task RefreshAiUsageAsync()
     {
         _aiUsageRefreshing = true;
         UpdateAiUsageStatusSummary();
         try { await AiAccountUsageMonitor.Shared.RefreshAsync(forceCodex: true); }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { /* Refresh aborted while shutting down. */ }
+        catch (Exception ex) { RuntimeLog.Warn("AI-USAGE-REFRESH", $"Failed to refresh AI usage: {ex.Message}"); }
         finally
         {
             _aiUsageRefreshing = false;
@@ -183,7 +187,7 @@ public partial class SettingsWindow
         try
         {
             var result = new ClaudeUsageBridge().Install();
-            _ = AiAccountUsageMonitor.Shared.RefreshAsync();
+            AiAccountUsageMonitor.Shared.RefreshAsync().SafeFireAndForget("AI-USAGE-REFRESH");
             AiUsageSettingsPreview.Present();
             ShowAiUsageFeedback(result == ClaudeBridgeSetup.ExistingStatusLine ? "aiUsage.setupConflict" : "aiUsage.setupDone");
         }
@@ -197,7 +201,7 @@ public partial class SettingsWindow
         try
         {
             new ClaudeUsageBridge().Remove();
-            _ = AiAccountUsageMonitor.Shared.RefreshAsync();
+            AiAccountUsageMonitor.Shared.RefreshAsync().SafeFireAndForget("AI-USAGE-REFRESH");
             AiUsageSettingsPreview.Present();
             ShowAiUsageFeedback("aiUsage.removed");
         }

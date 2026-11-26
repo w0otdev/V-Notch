@@ -815,7 +815,7 @@ public:
         return S_OK;
     }
 };
-vnotch::HandleRegistry<GpuGlass> pipelines;
+vnotch::ImmortalHandleRegistry<GpuGlass> pipelines;
 
 // Readouts, presentation and reset all share this pipeline's mutable state.
 // The adapter lock separately protects D3D11 commands across pipelines.

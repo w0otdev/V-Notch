@@ -44,7 +44,9 @@ public sealed class EncryptedChatRepository : IChatRepository
                 Initialize();
                 return action();
             }, cancellation, TaskContinuationOptions.LazyCancellation, TaskScheduler.Default);
-            _pending = task;
+            // The queue needs the completion signal, not the last loaded conversation.
+            _pending = task.ContinueWith(static _ => { }, CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             return task;
         }
     }

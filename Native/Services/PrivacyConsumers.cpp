@@ -164,8 +164,8 @@ struct ConsentCache {
     std::unordered_map<std::u16string, std::vector<VnConsentStoreEntry>> capabilities;
     ULONGLONG next_scan = 0;
 };
-vnotch::HandleRegistry<Consumers> consumers;
-vnotch::HandleRegistry<ConsentCache> consent_caches;
+vnotch::ImmortalHandleRegistry<Consumers> consumers;
+vnotch::ImmortalHandleRegistry<ConsentCache> consent_caches;
 }
 
 VN_EXPORT int32_t vn_privacy_consumers_create(const VnPrivacyProcessEntry* entries, int32_t count, int64_t* handle) noexcept {

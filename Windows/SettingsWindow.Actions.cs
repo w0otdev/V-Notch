@@ -285,10 +285,8 @@ public partial class SettingsWindow
         return count;
     }
 
-    internal async void Apply_Click(object sender, RoutedEventArgs e)
-    {
-        await ApplyWithoutClosingAsync();
-    }
+    internal void Apply_Click(object sender, RoutedEventArgs e)
+        => ApplyWithoutClosingAsync().SafeFireAndForget("SETTINGS-APPLY");
 
     internal bool IsSaving => _isSaving;
     internal bool IsClosing => _isClosing;
@@ -323,7 +321,8 @@ public partial class SettingsWindow
         finally { _isSaving = false; }
     }
 
-    internal async void Save_Click(object sender, RoutedEventArgs e) => await ApplyAndCloseAsync();
+    internal void Save_Click(object sender, RoutedEventArgs e)
+        => ApplyAndCloseAsync().SafeFireAndForget("SETTINGS-SAVE");
     internal void CloseWithAnimation()
     {
         if (_isClosing) return;

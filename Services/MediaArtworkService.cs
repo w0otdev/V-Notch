@@ -1,4 +1,3 @@
-using VNotch.Models;
 using System.Buffers;
 using System.IO;
 using System.Net.Http;
@@ -7,6 +6,8 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using VNotch.Interop;
+using VNotch.Models;
 using Windows.Storage.Streams;
 
 namespace VNotch.Services;
@@ -24,10 +25,12 @@ public interface IMediaArtworkService
 
 public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposable
 {
-    [LibraryImport("VNotch.Native.dll")]
+    private const string NativeDll = NativeAbi.LibraryName;
+
+    [LibraryImport(NativeDll)]
     private static partial int vn_memory_trim_working_set();
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_media_artwork_detect_content_bounds(
         ReadOnlySpan<byte> pixels,
         int pixelsLen,
@@ -43,7 +46,7 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
         out int outW,
         out int outH);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_media_artwork_compute_square_crop_metrics(
         int width,
         int height,
@@ -136,7 +139,7 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(4000));
 
-            using var response = await _client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
+            using var response = await _client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 return null;
@@ -148,32 +151,25 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
                 return null;
             }
 
-            using var contentStream = await response.Content.ReadAsStreamAsync(timeoutCts.Token);
+            using var contentStream = await response.Content.ReadAsStreamAsync(timeoutCts.Token).ConfigureAwait(false);
             using var ms = new MemoryStream();
-            byte[] buffer = ArrayPool<byte>.Shared.Rent(81920);
-            try
+            var buffer = new byte[81920];
+            long totalRead = 0;
+            int bytesRead;
+            while ((bytesRead = await contentStream.ReadAsync(buffer.AsMemory(0, buffer.Length), timeoutCts.Token).ConfigureAwait(false)) > 0)
             {
-                long totalRead = 0;
-                int bytesRead;
-                while ((bytesRead = await contentStream.ReadAsync(buffer.AsMemory(0, buffer.Length), timeoutCts.Token)) > 0)
+                totalRead += bytesRead;
+                if (totalRead > MaxArtworkDownloadSizeBytes)
                 {
-                    totalRead += bytesRead;
-                    if (totalRead > MaxArtworkDownloadSizeBytes)
-                    {
-                        RuntimeLog.Log(ArtworkLogTag, $"DownloadImageAsync exceeded max allowed size ({MaxArtworkDownloadSizeBytes} bytes) for {url}");
-                        return null;
-                    }
-                    await ms.WriteAsync(buffer.AsMemory(0, bytesRead), timeoutCts.Token).ConfigureAwait(false);
+                    RuntimeLog.Log(ArtworkLogTag, $"DownloadImageAsync exceeded max allowed size ({MaxArtworkDownloadSizeBytes} bytes) for {url}");
+                    return null;
                 }
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
+                await ms.WriteAsync(buffer.AsMemory(0, bytesRead), timeoutCts.Token).ConfigureAwait(false);
             }
 
             if (ms.Length == 0) return null;
 
-            return await DecodeImageAsync(ms.GetBuffer(), timeoutCts.Token, checked((int)ms.Length));
+            return await DecodeImageAsync(ms.GetBuffer(), timeoutCts.Token, checked((int)ms.Length)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

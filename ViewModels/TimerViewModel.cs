@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using CommunityToolkit.Mvvm.ComponentModel;
+using VNotch.Interop;
 
 namespace VNotch.ViewModels;
 
@@ -111,19 +112,19 @@ public partial class TimerViewModel : ObservableObject
         return len > 0 ? new string(buf, 0, len) : "00:00";
     }
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static unsafe partial int vn_timer_parse_custom_time(
         char* input, int input_len, out long out_ticks, out byte out_valid);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static unsafe partial int vn_timer_format_remaining(
         long remaining_ticks, char* out_buf, int buf_cap, out int out_len);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_timer_compute_adjust_ticks(
         long current_duration_ticks, int direction, out long out_next_ticks, out byte out_changed);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_timer_compute_progress(
         long duration_ticks, long remaining_ticks, out double out_progress);
 }

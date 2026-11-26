@@ -999,6 +999,7 @@
   "clipboard.archive": "Archivieren",
   "clipboard.unarchive": "Aus dem Archiv wiederherstellen",
   "clipboard.delete": "Löschen",
+  "clipboard.approvalQueueFull": "Die Warteschlange für Bestätigungen ist voll. Dieses Element wurde nicht gespeichert.",
   "clipboard.largeFile": "Lokale Kopie von {1} speichern?\nGesamtgröße: {0:N1} MB (über 50 MB).",
   "clipboard.dropHint": "Dateien oder Bilder hierher ziehen, um sie schnell anzupinnen",
   "clipboard.categoryOnlyImages": "Dieser Tab akzeptiert nur Bilder!",

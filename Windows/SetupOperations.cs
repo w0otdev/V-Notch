@@ -367,7 +367,7 @@ internal static class SetupOperations
             return;
         }
 
-        Process.Start(new ProcessStartInfo(installedExePath)
+        using var launched = Process.Start(new ProcessStartInfo(installedExePath)
         {
             UseShellExecute = true,
             WorkingDirectory = installDirectory
@@ -440,7 +440,7 @@ internal static class SetupOperations
         if (!TryUninstallStep("validate install directory cleanup",
             validateCleanupStartInfo ?? (() => InstallDirectoryCleanup.CreateStartInfo(installDirectory, Environment.ProcessId)))) return false;
         if (!TryUninstallStep("stop running instances",
-            stopRunningInstances ?? (() => StopOtherRunningInstancesAsync().GetAwaiter().GetResult()))) return false;
+            stopRunningInstances ?? (() => Task.Run(StopOtherRunningInstancesAsync).GetAwaiter().GetResult()))) return false;
         TryUninstallStep("remove startup registration",
             removeStartup ?? RemoveStartupRegistration);
         TryUninstallStep("remove uninstall registration",

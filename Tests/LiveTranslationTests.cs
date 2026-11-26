@@ -328,6 +328,21 @@ public sealed class LiveTranslationTests
         Assert.True(work.Contains(new Rect(placement, new Size(500, 440))));
     }
 
+    [Fact]
+    public void ApplySettings_AfterDispose_DoesNotCreateWatchers() => SharedStaTestRunner.Run(() =>
+    {
+        var controller = new VNotch.Controllers.LiveTranslationController(
+            System.Windows.Threading.Dispatcher.CurrentDispatcher,
+            static () => { },
+            engine: new FakeEngine((_, _, _, _) => Task.FromResult(string.Empty)));
+        controller.Dispose();
+
+        controller.ApplySettings(new NotchSettings { EnableLiveTranslation = true });
+
+        Assert.False(controller.HasSelectionWatcher);
+        Assert.False(controller.HasShiftShortcut);
+    });
+
     private sealed class FakeEngine(Func<string, string, string, CancellationToken, Task<string>> translate) : ILocalTranslationEngine
     {
         internal int Calls;

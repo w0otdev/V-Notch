@@ -774,19 +774,29 @@ public sealed class MediaThumbnailPipelineTests
         var info = fixture.Track("YouTube");
         fixture.PublishIdentity(info);
         var previous = new TaskCompletionSource<YouTubeLookupResult?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Metadata.Lookup = (title, _) => title == info.CurrentTrack ? previous.Task : Task.FromResult<YouTubeLookupResult?>(Result(title));
+        var firstLookup = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Metadata.Lookup = (title, token) =>
+        {
+            if (title != info.CurrentTrack) return Task.FromResult<YouTubeLookupResult?>(Result(title));
+            firstLookup.TrySetResult(token);
+            return previous.Task;
+        };
         fixture.Artwork.Image = Bitmap(640, 360);
-        Invoke(fixture.Service, "StartThumbnailFetchIfNeeded", info, true);
-        await WpfFrameWaiter.UntilAsync(() => fixture.Metadata.TrackCalls == 1, "first artwork lookup", ct);
-        Invoke(fixture.Service, "StartThumbnailFetchIfNeeded", info, false);
-        Assert.Equal(1, fixture.Metadata.TrackCalls);
+        var firstFetch = fixture.Service.StartThumbnailFetchIfNeeded(info, true);
+        var firstToken = await firstLookup.Task.WaitAsync(ct);
+        var repeated = fixture.Service.StartThumbnailFetchIfNeeded(info, false);
+        Assert.False(firstToken.IsCancellationRequested);
         var replacement = fixture.Track("YouTube");
         replacement.CurrentTrack = "Replacement track";
         fixture.PublishIdentity(replacement);
-        Invoke(fixture.Service, "StartThumbnailFetchIfNeeded", replacement, true);
-        await WpfFrameWaiter.UntilAsync(() => fixture.Updates.Any(update => update.IsThumbnailOnlyUpdate && update.CurrentTrack == replacement.CurrentTrack), "replacement artwork published", ct);
-        previous.SetResult(Result(info.CurrentTrack));
-        await WpfFrameWaiter.NextAsync(ct);
+        try
+        {
+            await fixture.Service.StartThumbnailFetchIfNeeded(replacement, true).WaitAsync(ct);
+            Assert.True(firstToken.IsCancellationRequested);
+            Assert.Contains(fixture.Updates, update => update.IsThumbnailOnlyUpdate && update.CurrentTrack == replacement.CurrentTrack);
+        }
+        finally { previous.SetResult(Result(info.CurrentTrack)); }
+        await Task.WhenAll(firstFetch, repeated).WaitAsync(ct);
         Assert.DoesNotContain(fixture.Updates, update => update.CurrentTrack == info.CurrentTrack);
         Assert.Same(fixture.Artwork.Image, replacement.Thumbnail);
         Assert.Null(info.Thumbnail);

@@ -1,4 +1,5 @@
 using System.Windows.Threading;
+using VNotch.Services;
 using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Controllers;
@@ -64,6 +65,7 @@ internal sealed class DedicatedKeyboardHook : IDisposable
 
     private sealed class SharedHookHost
     {
+        private static readonly TimeSpan WorkerStartupTimeout = TimeSpan.FromSeconds(2);
         private readonly Thread _thread;
         private readonly LowLevelKeyboardHook _hook;
         private Func<KBDLLHOOKSTRUCT, int, bool>[] _listeners = [];
@@ -82,8 +84,9 @@ internal sealed class DedicatedKeyboardHook : IDisposable
             _thread = new Thread(() => Run(ready)) { IsBackground = true, Name = "VNotch keyboard hook" };
             _thread.SetApartmentState(ApartmentState.STA);
             _thread.Start();
-            // Startup only installs the native hook; it never calls the UI dispatcher.
-            ready.Task.GetAwaiter().GetResult();
+            // Startup only installs the native hook; bound the wait so a stalled worker cannot wedge the UI thread.
+            if (!ready.Task.Wait(WorkerStartupTimeout))
+                RuntimeLog.Warn("KEYBOARD-HOOK", "Timed out waiting for shared keyboard hook startup.");
         }
 
         private bool DispatchKey(KBDLLHOOKSTRUCT key, int message)

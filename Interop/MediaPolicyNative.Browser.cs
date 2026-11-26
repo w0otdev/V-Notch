@@ -1,10 +1,23 @@
-using VNotch.Models;
 using System.Runtime.InteropServices;
+using VNotch.Models;
 
 namespace VNotch.Interop;
 
 internal static partial class MediaPolicyNative
 {
+    internal readonly record struct YouTubeAdEvaluationRequest(
+        bool IsBrowserSession,
+        bool HasStableTrack,
+        string? LastSource,
+        string? LastPublishedSessionInstanceKey,
+        string? CurrentSessionInstanceKey,
+        string? CurrentTrack,
+        TimeSpan CurrentDuration,
+        bool HasYouTubeWindow,
+        bool CurrentTrackMatchesYouTubeWindow,
+        DateTime TransitionStartedUtc,
+        DateTime NowUtc);
+
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct VnBrowserAdTransitionDecision
     {
@@ -13,14 +26,14 @@ internal static partial class MediaPolicyNative
         public byte WasTransitionActive;
     }
 
-    [LibraryImport(NativeAbi.LibraryName)]
-    private static unsafe partial int vn_browser_media_eval_likely_youtube_ad(
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_browser_media_eval_likely_youtube_ad(
         byte isBrowserSession,
         byte hasStableTrack,
-        char* lastSourcePtr, int lastSourceLen,
-        char* lastSessionKeyPtr, int lastSessionKeyLen,
-        char* curSessionKeyPtr, int curSessionKeyLen,
-        char* curTrackPtr, int curTrackLen,
+        ReadOnlySpan<char> lastSourcePtr, int lastSourceLen,
+        ReadOnlySpan<char> lastSessionKeyPtr, int lastSessionKeyLen,
+        ReadOnlySpan<char> curSessionKeyPtr, int curSessionKeyLen,
+        ReadOnlySpan<char> curTrackPtr, int curTrackLen,
         long curDurationTicks,
         byte hasYouTubeWindow,
         byte curTrackMatchesYouTubeWindow,
@@ -28,27 +41,51 @@ internal static partial class MediaPolicyNative
         long nowUtcTicks,
         out VnBrowserAdTransitionDecision outDecision);
 
-    [LibraryImport(NativeAbi.LibraryName)]
-    private static unsafe partial int vn_browser_media_eval_youtube_junk_metadata(
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_browser_media_eval_youtube_junk_metadata(
         byte isBrowserSession,
         byte hasStableTrack,
-        char* lastSourcePtr, int lastSourceLen,
+        ReadOnlySpan<char> lastSourcePtr, int lastSourceLen,
         byte hasYouTubeWindow,
         long transitionStartedUtcTicks,
         long nowUtcTicks,
         out VnBrowserAdTransitionDecision outDecision);
 
-    [LibraryImport(NativeAbi.LibraryName)]
-    private static unsafe partial int vn_browser_media_should_carry_youtube_source(
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_browser_media_should_carry_youtube_source(
         byte isBrowserSession,
-        char* hintPtr, int hintLen,
-        char* lastSourcePtr, int lastSourceLen,
-        char* stableSourcePtr, int stableSourceLen,
+        ReadOnlySpan<char> hintPtr, int hintLen,
+        ReadOnlySpan<char> lastSourcePtr, int lastSourceLen,
+        ReadOnlySpan<char> stableSourcePtr, int stableSourceLen,
         byte isCompletingAdTransition,
         out byte outCarry);
 
-#pragma warning disable S107
-    public static unsafe BrowserAdTransitionDecision EvaluateLikelyYouTubeAd(
+    public static BrowserAdTransitionDecision EvaluateLikelyYouTubeAd(in YouTubeAdEvaluationRequest request)
+    {
+        ReadOnlySpan<char> lastSource = request.LastSource.AsSpan();
+        ReadOnlySpan<char> lastSessionKey = request.LastPublishedSessionInstanceKey.AsSpan();
+        ReadOnlySpan<char> currentSessionKey = request.CurrentSessionInstanceKey.AsSpan();
+        ReadOnlySpan<char> currentTrack = request.CurrentTrack.AsSpan();
+
+        int result = vn_browser_media_eval_likely_youtube_ad(
+            request.IsBrowserSession ? (byte)1 : (byte)0,
+            request.HasStableTrack ? (byte)1 : (byte)0,
+            lastSource, lastSource.Length,
+            lastSessionKey, lastSessionKey.Length,
+            currentSessionKey, currentSessionKey.Length,
+            currentTrack, currentTrack.Length,
+            request.CurrentDuration.Ticks,
+            request.HasYouTubeWindow ? (byte)1 : (byte)0,
+            request.CurrentTrackMatchesYouTubeWindow ? (byte)1 : (byte)0,
+            request.TransitionStartedUtc == DateTime.MinValue ? 0 : request.TransitionStartedUtc.Ticks,
+            request.NowUtc.Ticks,
+            out VnBrowserAdTransitionDecision decision);
+        NativeResult.RequireSuccess(result, nameof(EvaluateLikelyYouTubeAd));
+
+        return ToDecision(decision, request.TransitionStartedUtc.Kind);
+    }
+
+    public static BrowserAdTransitionDecision EvaluateLikelyYouTubeAd(
         bool isBrowserSession,
         bool hasStableTrack,
         string? lastSource,
@@ -59,42 +96,21 @@ internal static partial class MediaPolicyNative
         bool hasYouTubeWindow,
         bool currentTrackMatchesYouTubeWindow,
         DateTime transitionStartedUtc,
-        DateTime nowUtc)
-    {
-        string lSrc = lastSource ?? string.Empty;
-        string lKey = lastPublishedSessionInstanceKey ?? string.Empty;
-        string cKey = currentSessionInstanceKey ?? string.Empty;
-        string cTr = currentTrack ?? string.Empty;
+        DateTime nowUtc) =>
+        EvaluateLikelyYouTubeAd(new YouTubeAdEvaluationRequest(
+            isBrowserSession,
+            hasStableTrack,
+            lastSource,
+            lastPublishedSessionInstanceKey,
+            currentSessionInstanceKey,
+            currentTrack,
+            currentDuration,
+            hasYouTubeWindow,
+            currentTrackMatchesYouTubeWindow,
+            transitionStartedUtc,
+            nowUtc));
 
-        fixed (char* pLSrc = lSrc)
-        fixed (char* pLKey = lKey)
-        fixed (char* pCKey = cKey)
-        fixed (char* pCTr = cTr)
-        {
-            int result = vn_browser_media_eval_likely_youtube_ad(
-                isBrowserSession ? (byte)1 : (byte)0,
-                hasStableTrack ? (byte)1 : (byte)0,
-                pLSrc, lSrc.Length,
-                pLKey, lKey.Length,
-                pCKey, cKey.Length,
-                pCTr, cTr.Length,
-                currentDuration.Ticks,
-                hasYouTubeWindow ? (byte)1 : (byte)0,
-                currentTrackMatchesYouTubeWindow ? (byte)1 : (byte)0,
-                transitionStartedUtc == DateTime.MinValue ? 0 : transitionStartedUtc.Ticks,
-                nowUtc.Ticks,
-                out VnBrowserAdTransitionDecision dec);
-            NativeResult.RequireSuccess(result, nameof(EvaluateLikelyYouTubeAd));
-
-            DateTime started = dec.TransitionStartedUtcTicks == 0
-                ? DateTime.MinValue
-                : new DateTime(dec.TransitionStartedUtcTicks, transitionStartedUtc.Kind);
-            return new BrowserAdTransitionDecision(dec.ShouldHold != 0, started, dec.WasTransitionActive != 0);
-        }
-    }
-#pragma warning restore S107
-
-    public static unsafe BrowserAdTransitionDecision EvaluateYouTubeJunkMetadata(
+    public static BrowserAdTransitionDecision EvaluateYouTubeJunkMetadata(
         bool isBrowserSession,
         bool hasStableTrack,
         string? lastSource,
@@ -102,50 +118,47 @@ internal static partial class MediaPolicyNative
         DateTime transitionStartedUtc,
         DateTime nowUtc)
     {
-        string lSrc = lastSource ?? string.Empty;
-        fixed (char* pLSrc = lSrc)
-        {
-            int result = vn_browser_media_eval_youtube_junk_metadata(
-                isBrowserSession ? (byte)1 : (byte)0,
-                hasStableTrack ? (byte)1 : (byte)0,
-                pLSrc, lSrc.Length,
-                hasYouTubeWindow ? (byte)1 : (byte)0,
-                transitionStartedUtc == DateTime.MinValue ? 0 : transitionStartedUtc.Ticks,
-                nowUtc.Ticks,
-                out VnBrowserAdTransitionDecision dec);
-            NativeResult.RequireSuccess(result, nameof(EvaluateYouTubeJunkMetadata));
+        ReadOnlySpan<char> source = lastSource.AsSpan();
+        int result = vn_browser_media_eval_youtube_junk_metadata(
+            isBrowserSession ? (byte)1 : (byte)0,
+            hasStableTrack ? (byte)1 : (byte)0,
+            source, source.Length,
+            hasYouTubeWindow ? (byte)1 : (byte)0,
+            transitionStartedUtc == DateTime.MinValue ? 0 : transitionStartedUtc.Ticks,
+            nowUtc.Ticks,
+            out VnBrowserAdTransitionDecision decision);
+        NativeResult.RequireSuccess(result, nameof(EvaluateYouTubeJunkMetadata));
 
-            DateTime started = dec.TransitionStartedUtcTicks == 0
-                ? DateTime.MinValue
-                : new DateTime(dec.TransitionStartedUtcTicks, transitionStartedUtc.Kind);
-            return new BrowserAdTransitionDecision(dec.ShouldHold != 0, started, dec.WasTransitionActive != 0);
-        }
+        return ToDecision(decision, transitionStartedUtc.Kind);
     }
 
-    public static unsafe bool ShouldCarryYouTubeSource(
+    public static bool ShouldCarryYouTubeSource(
         bool isBrowserSession,
         string? currentBrowserPlatformHint,
         string? lastSource,
         string? stableSource,
         bool isCompletingAdTransition)
     {
-        string hint = currentBrowserPlatformHint ?? string.Empty;
-        string lSrc = lastSource ?? string.Empty;
-        string sSrc = stableSource ?? string.Empty;
+        ReadOnlySpan<char> hint = currentBrowserPlatformHint.AsSpan();
+        ReadOnlySpan<char> previous = lastSource.AsSpan();
+        ReadOnlySpan<char> stable = stableSource.AsSpan();
 
-        fixed (char* pH = hint)
-        fixed (char* pL = lSrc)
-        fixed (char* pS = sSrc)
-        {
-            int result = vn_browser_media_should_carry_youtube_source(
-                isBrowserSession ? (byte)1 : (byte)0,
-                pH, hint.Length,
-                pL, lSrc.Length,
-                pS, sSrc.Length,
-                isCompletingAdTransition ? (byte)1 : (byte)0,
-                out byte carry);
-            NativeResult.RequireSuccess(result, nameof(ShouldCarryYouTubeSource));
-            return carry != 0;
-        }
+        int result = vn_browser_media_should_carry_youtube_source(
+            isBrowserSession ? (byte)1 : (byte)0,
+            hint, hint.Length,
+            previous, previous.Length,
+            stable, stable.Length,
+            isCompletingAdTransition ? (byte)1 : (byte)0,
+            out byte carry);
+        NativeResult.RequireSuccess(result, nameof(ShouldCarryYouTubeSource));
+        return carry != 0;
+    }
+
+    private static BrowserAdTransitionDecision ToDecision(VnBrowserAdTransitionDecision decision, DateTimeKind kind)
+    {
+        DateTime started = decision.TransitionStartedUtcTicks == 0
+            ? DateTime.MinValue
+            : new DateTime(decision.TransitionStartedUtcTicks, kind);
+        return new BrowserAdTransitionDecision(decision.ShouldHold != 0, started, decision.WasTransitionActive != 0);
     }
 }

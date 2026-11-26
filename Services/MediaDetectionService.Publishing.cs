@@ -28,7 +28,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         bool isNewTrackForThumbnail = ComputeIsNewTrackForThumbnail(info);
         if (!await TryPublishMediaChangeAsync(info, currentSignature, isNewTrackForThumbnail, forceRefresh)) return;
         if (!info.IsMetadataPending)
-            StartThumbnailFetchIfNeeded(info.Clone(), isNewTrackForThumbnail);
+            _ = StartThumbnailFetchIfNeeded(info.Clone(), isNewTrackForThumbnail);
     }
 
     private void TrackNameChangeBookkeeping(MediaInfo info, bool resetThrottle = true)

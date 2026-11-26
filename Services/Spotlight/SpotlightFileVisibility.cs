@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using VNotch.Interop;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
@@ -12,7 +13,7 @@ namespace VNotch.Services.Spotlight;
 // remain available even when their installation lives in one of these roots.
 internal static partial class SpotlightFileVisibility
 {
-    private const string NativeDll = "VNotch.Native.dll";
+    private const string NativeDll = NativeAbi.LibraryName;
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_visibility_is_explicit_path(

@@ -999,6 +999,7 @@
   "clipboard.archive": "Archiver",
   "clipboard.unarchive": "Restaurer depuis les archives",
   "clipboard.delete": "Supprimer",
+  "clipboard.approvalQueueFull": "La file d’attente des validations est pleine. Cet élément n’a pas été enregistré.",
   "clipboard.largeFile": "Enregistrer une copie locale de {1} ?\nTaille totale : {0:N1} MB (plus de 50 MB).",
   "clipboard.dropHint": "Glissez-déposez des fichiers ou des images ici pour les épingler rapidement",
   "clipboard.categoryOnlyImages": "Cet onglet n'accepte que des images !",

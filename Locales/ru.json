@@ -999,6 +999,7 @@
   "clipboard.archive": "Архивировать",
   "clipboard.unarchive": "Восстановить из Архива",
   "clipboard.delete": "Удалить",
+  "clipboard.approvalQueueFull": "Очередь подтверждений заполнена. Этот элемент не сохранён.",
   "clipboard.largeFile": "Сохранить локальную копию {1}?\nОбщий размер: {0:N1} MB (более 50 MB).",
   "clipboard.dropHint": "Перетащите файлы или изображения сюда для быстрого закрепления",
   "clipboard.categoryOnlyImages": "Эта вкладка принимает только изображения!",

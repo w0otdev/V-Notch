@@ -17,6 +17,42 @@ namespace VNotch.Tests;
 
 public class MarkdownNativeParserTests
 {
+    [Fact]
+    public void BoundedRevealMatchesFullWordScanAtEveryBudget()
+    {
+        foreach (string text in new[] { "", " \t\r\n", "🪷", "\u2003one\u00A0hai\r\n三🪷  ",
+            string.Join("\u202F", Enumerable.Range(0, 310).Select(i => $"**w{i}**")) })
+        {
+            var spans = new AiMarkdown.VnMarkdownWordSlice[text.Length];
+            Assert.Equal(0, AiMarkdown.ScanWordSpans(text, spans, out int count));
+            foreach (int budget in Enumerable.Range(-1, count + 4).Append(int.MaxValue))
+            {
+                int words = Math.Max(1, budget);
+                int expected = words >= count ? text.Length : spans[words - 1].Start + spans[words - 1].Length;
+                Assert.Equal(expected, AiMarkdown.RevealPrefixLength(text, budget));
+            }
+        }
+    }
+
+    [Fact]
+    public void ClosedMarkdownStreamReleasesLastSourceOnTheSameUiThread() => SharedStaTestRunner.Run(() =>
+    {
+        var sources = Enumerable.Range(0, 8).Select(_ => RenderAndRelease()).ToArray();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.All(sources, source => Assert.False(source.IsAlive));
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        static WeakReference RenderAndRelease()
+        {
+            string text = "Retained? " + new string('x', 48000);
+            var renderer = new AiMarkdown.StreamRenderer();
+            Assert.True(renderer.Advance(text, int.MaxValue, 0));
+            return new WeakReference(text);
+        }
+    });
+
     private static void RunOnSta(Action action)
     {
         Exception? captured = null;

@@ -41,6 +41,18 @@ namespace
         return ch >= u'0' && ch <= u'9';
     }
 
+    int32_t skip_whitespace(const char16_t* text, int32_t length, int32_t offset) noexcept
+    {
+        while (offset < length && is_unicode_ws(text[offset])) ++offset;
+        return offset;
+    }
+
+    int32_t word_end(const char16_t* text, int32_t length, int32_t start) noexcept
+    {
+        while (start < length && !is_unicode_ws(text[start])) ++start;
+        return skip_whitespace(text, length, start);
+    }
+
     constexpr bool is_alpha(char16_t ch) noexcept
     {
         return (ch >= u'a' && ch <= u'z') || (ch >= u'A' && ch <= u'Z');
@@ -126,23 +138,12 @@ extern "C" VN_EXPORT int32_t __stdcall vn_markdown_scan_word_spans(
     }
 
     int32_t count = 0;
-    int32_t i = 0;
-    while (i < text_len && is_unicode_ws(text_ptr[i]))
-    {
-        ++i;
-    }
+    int32_t i = skip_whitespace(text_ptr, text_len, 0);
 
     while (i < text_len)
     {
         int32_t start = i;
-        while (i < text_len && !is_unicode_ws(text_ptr[i]))
-        {
-            ++i;
-        }
-        while (i < text_len && is_unicode_ws(text_ptr[i]))
-        {
-            ++i;
-        }
+        i = word_end(text_ptr, text_len, start);
 
         if (out_spans != nullptr && count < span_cap)
         {
@@ -156,6 +157,16 @@ extern "C" VN_EXPORT int32_t __stdcall vn_markdown_scan_word_spans(
     {
         return VN_ERR_BUFFER_TOO_SMALL;
     }
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_markdown_reveal_prefix(
+    const char16_t* text, int32_t length, int32_t words, int32_t* end) noexcept
+{
+    if (!end || length < 0 || (length && !text) || words <= 0) return VN_ERR_INVALID_ARG;
+    int32_t offset = skip_whitespace(text, length, 0);
+    while (offset < length && words-- > 0) offset = word_end(text, length, offset);
+    *end = offset;
     return VN_OK;
 }
 

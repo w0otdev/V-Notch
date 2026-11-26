@@ -510,12 +510,11 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
     {
         if (!disposing) return;
 
-        // Wait for queued saves to reach disk so they are not lost on exit. The worker
-        // runs on the thread pool and never needs the UI dispatcher, so blocking here
-        // cannot deadlock; the timeout bounds shutdown if the disk stalls.
+        // Offload the drain onto the thread pool so SyncContext continuations inside
+        // DisposeAsync cannot deadlock against the caller blocking synchronously here.
         try
         {
-            if (!DisposeAsync().AsTask().Wait(DisposeDrainTimeout))
+            if (!Task.Run(() => DisposeAsync().AsTask()).Wait(DisposeDrainTimeout))
                 RuntimeLog.Log("SETTINGS-DISPOSE", $"Pending saves did not finish within {DisposeDrainTimeout.TotalSeconds:0}s");
         }
         catch (Exception ex)

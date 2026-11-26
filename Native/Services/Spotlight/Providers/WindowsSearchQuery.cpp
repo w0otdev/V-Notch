@@ -10,16 +10,22 @@
 using Microsoft::WRL::ComPtr;
 
 namespace {
+#pragma pack(push, 1)
 struct SearchResult { BSTR name, path; int folder; };
+#pragma pack(pop)
+static_assert(sizeof(SearchResult) == sizeof(BSTR) * 2 + sizeof(int));
 struct Column { BSTR value; DBSTATUS status; };
 struct Apartment {
     HRESULT status = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    Apartment() = default;
+    Apartment(const Apartment&) = delete;
+    Apartment& operator=(const Apartment&) = delete;
     ~Apartment() { if (SUCCEEDED(status)) CoUninitialize(); }
 };
 }
 
 // Successful rows transfer ownership of both BSTRs, including on a later error.
-VN_EXPORT HRESULT vn_windows_search_execute(const wchar_t* sql, HANDLE cancel,
+VN_EXPORT HRESULT __stdcall vn_windows_search_execute(const wchar_t* sql, HANDLE cancel,
     SearchResult* output, int capacity, int* count) noexcept
 {
     if (!sql || !cancel || !output || capacity <= 0 || !count) return E_INVALIDARG;

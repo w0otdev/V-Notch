@@ -1001,6 +1001,7 @@
   "clipboard.archive": "Lưu trữ",
   "clipboard.unarchive": "Khôi phục từ Lưu trữ",
   "clipboard.delete": "Xóa",
+  "clipboard.approvalQueueFull": "Hàng đợi duyệt đã đầy. Mục này chưa được lưu.",
   "clipboard.largeFile": "Lưu bản sao của {1} vào máy tính?\nTổng dung lượng: {0:N1} MB (vượt quá 50 MB).",
   "clipboard.dropHint": "Kéo thả tệp hoặc ảnh vào đây để ghim nhanh",
   "clipboard.categoryOnlyImages": "Mục này chỉ nhận hình ảnh.",

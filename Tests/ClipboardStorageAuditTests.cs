@@ -167,6 +167,47 @@ public sealed class ClipboardStorageAuditTests
     }
 
     [Fact]
+    public void AuthenticatedAttachmentSupportsSeekingAndRejectsCorruptionInUnreadTail()
+    {
+        using var fixture = new Fixture();
+        using var vault = new ClipboardVault(fixture.History);
+        using var pin = Pin();
+        Assert.True(vault.Unlock(pin, true));
+        const int chunk = 1024 * 1024;
+        foreach (int length in new[] { 0, 1, chunk, 2 * chunk + 7 })
+        {
+            byte[] original = RandomNumberGenerator.GetBytes(length);
+            string path = Path.Combine(fixture.History, length + ".enc");
+            using (var input = new MemoryStream(original))
+            using (var output = File.Create(path)) vault.TransformFile(input, output, true);
+            using (var stream = vault.OpenAttachmentRead(path))
+            {
+                Assert.Equal(length, stream.Length);
+                stream.Seek(1, SeekOrigin.End);
+                Assert.Equal(-1, stream.ReadByte());
+                int start = Math.Min(length, chunk - 3);
+                stream.Position = start;
+                var sample = new byte[Math.Min(9, length - start)];
+                stream.ReadExactly(sample);
+                Assert.Equal(original.AsSpan(start, sample.Length).ToArray(), sample);
+                stream.Position = 0;
+                using var restored = new MemoryStream();
+                stream.CopyTo(restored);
+                Assert.Equal(original, restored.ToArray());
+            }
+            using (var file = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                file.Position = file.Length - 1;
+                int last = file.ReadByte();
+                file.Position--;
+                file.WriteByte((byte)(last ^ 1));
+            }
+            Assert.Throws<AuthenticationTagMismatchException>(() => vault.OpenAttachmentRead(path));
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void FailedStreamingWriterDoesNotPublishAnAttachment()
     {
         using var fixture = new Fixture();

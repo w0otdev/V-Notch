@@ -13,7 +13,7 @@ namespace VNotch.Services;
 #pragma warning disable S101, CA1707, CA1708, IDE1006 // Native Win32 API struct and naming conventions
 internal static unsafe partial class Win32Interop
 {
-    private const string NativeDll = "VNotch.Native.dll";
+    private const string NativeDll = VNotch.Interop.NativeAbi.LibraryName;
 
     #region Native exports
 
@@ -565,42 +565,100 @@ internal static unsafe partial class Win32Interop
     /// </summary>
     internal sealed class LowLevelKeyboardHook(Func<KBDLLHOOKSTRUCT, int, bool> handler) : IDisposable
     {
-        private GCHandle _self;
-        private int _slot = -1;
+        private sealed class KeyboardHookHandle : SafeHandle
+        {
+            private GCHandle _callbackRoot;
+
+            internal KeyboardHookHandle(int slot, GCHandle callbackRoot)
+                : base(new IntPtr(-1), true)
+            {
+                SetHandle((nint)slot);
+                _callbackRoot = callbackRoot;
+            }
+
+            public override bool IsInvalid => handle.ToInt64() < 0;
+
+            protected override bool ReleaseHandle()
+            {
+                int slot = (int)handle.ToInt64();
+                if (slot >= 0)
+                {
+                    NativeKeyboardHookUninstall(slot);
+                }
+
+                if (_callbackRoot.IsAllocated)
+                {
+                    _callbackRoot.Free();
+                }
+
+                return true;
+            }
+        }
+
+        private KeyboardHookHandle? _hookHandle;
+        private int _activeCallbackThreadId;
+        private int _disposed;
+        private int _disposeDeferred;
 
         internal int InstallationError { get; private set; }
-        internal bool IsInstalled => Volatile.Read(ref _slot) >= 0;
+        internal bool IsInstalled => Volatile.Read(ref _hookHandle) is { IsInvalid: false, IsClosed: false };
 
         internal bool Install()
         {
-            if (_slot >= 0) return true;
-            _self = GCHandle.Alloc(this);
-            delegate* unmanaged[Stdcall]<long, KeyboardHookEvent*, int> callback = &OnKey;
-            if (NativeKeyboardHookInstall((nint)callback, GCHandle.ToIntPtr(_self), out int slot, out int lastError) != 0)
+            if (Volatile.Read(ref _disposed) != 0)
             {
-                InstallationError = lastError;
-                _self.Free();
                 return false;
             }
 
-            Volatile.Write(ref _slot, slot);
+            if (IsInstalled)
+            {
+                return true;
+            }
+
+            using var pending = new PendingCallbackHandle(this);
+            delegate* unmanaged[Stdcall]<long, KeyboardHookEvent*, int> callback = &OnKey;
+            if (NativeKeyboardHookInstall((nint)callback, pending.Context, out int slot, out int lastError) != 0)
+            {
+                InstallationError = lastError;
+                return false;
+            }
+
+            Volatile.Write(ref _hookHandle, new KeyboardHookHandle(slot, pending.Transfer()));
             return true;
         }
 
         public void Dispose()
         {
-            int slot = Interlocked.Exchange(ref _slot, -1);
-            if (slot < 0) return;
-            NativeKeyboardHookUninstall(slot);
-            if (_self.IsAllocated) _self.Free();
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            if (Volatile.Read(ref _activeCallbackThreadId) == Environment.CurrentManagedThreadId)
+            {
+                Volatile.Write(ref _disposeDeferred, 1);
+                return;
+            }
+
+            Interlocked.Exchange(ref _hookHandle, null)?.Dispose();
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
         private static int OnKey(long context, KeyboardHookEvent* data)
         {
+            if (GCHandle.FromIntPtr((IntPtr)context).Target is not LowLevelKeyboardHook hook)
+            {
+                return 0;
+            }
+
+            if (Volatile.Read(ref hook._disposed) != 0)
+            {
+                return 0;
+            }
+
+            Volatile.Write(ref hook._activeCallbackThreadId, Environment.CurrentManagedThreadId);
             try
             {
-                if (GCHandle.FromIntPtr((IntPtr)context).Target is not LowLevelKeyboardHook hook) return 0;
                 var key = new KBDLLHOOKSTRUCT
                 {
                     vkCode = data->VkCode,
@@ -615,6 +673,14 @@ internal static unsafe partial class Win32Interop
             {
                 // Exceptions must never unwind through user32 or delay the keyboard chain.
                 return 0;
+            }
+            finally
+            {
+                Volatile.Write(ref hook._activeCallbackThreadId, 0);
+                if (Volatile.Read(ref hook._disposeDeferred) != 0)
+                {
+                    Interlocked.Exchange(ref hook._hookHandle, null)?.Dispose();
+                }
             }
         }
 
@@ -633,50 +699,112 @@ internal static unsafe partial class Win32Interop
     /// </summary>
     internal sealed class WinEventHook(uint eventMin, uint eventMax, Action<uint, IntPtr> handler) : IDisposable
     {
-        private readonly Action<uint, IntPtr> _handler = handler;
-        private GCHandle _self;
-        private int _slot = -1;
+        private sealed class WinEventHookHandle : SafeHandle
+        {
+            private GCHandle _callbackRoot;
 
-        internal bool IsInstalled => Volatile.Read(ref _slot) >= 0;
+            internal WinEventHookHandle(int slot, GCHandle callbackRoot)
+                : base(new IntPtr(-1), true)
+            {
+                SetHandle((nint)slot);
+                _callbackRoot = callbackRoot;
+            }
+
+            public override bool IsInvalid => handle.ToInt64() < 0;
+
+            protected override bool ReleaseHandle()
+            {
+                int slot = (int)handle.ToInt64();
+                if (slot >= 0)
+                {
+                    NativeWinEventHookUninstall(slot);
+                }
+
+                if (_callbackRoot.IsAllocated)
+                {
+                    _callbackRoot.Free();
+                }
+
+                return true;
+            }
+        }
+
+        private readonly Action<uint, IntPtr> _handler = handler;
+        private WinEventHookHandle? _hookHandle;
+        private int _activeCallbackThreadId;
+        private int _disposed;
+        private int _disposeDeferred;
+
+        internal bool IsInstalled => Volatile.Read(ref _hookHandle) is { IsInvalid: false, IsClosed: false };
 
         internal bool Install()
         {
-            if (_slot >= 0) return true;
-            _self = GCHandle.Alloc(this);
-            delegate* unmanaged[Stdcall]<long, uint, long, void> callback = &OnEvent;
-            if (NativeWinEventHookInstall(eventMin, eventMax, (nint)callback, GCHandle.ToIntPtr(_self), out int slot) != 0)
+            if (Volatile.Read(ref _disposed) != 0)
             {
-                _self.Free();
                 return false;
             }
 
-            Volatile.Write(ref _slot, slot);
+            if (IsInstalled)
+            {
+                return true;
+            }
+
+            using var pending = new PendingCallbackHandle(this);
+            delegate* unmanaged[Stdcall]<long, uint, long, void> callback = &OnEvent;
+            if (NativeWinEventHookInstall(eventMin, eventMax, (nint)callback, pending.Context, out int slot) != 0)
+            {
+                return false;
+            }
+
+            Volatile.Write(ref _hookHandle, new WinEventHookHandle(slot, pending.Transfer()));
             return true;
         }
 
         public void Dispose()
         {
-            int slot = Interlocked.Exchange(ref _slot, -1);
-            if (slot < 0) return;
-            if (NativeWinEventHookUninstall(slot) != 0)
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
             {
-                Volatile.Write(ref _slot, slot);
                 return;
             }
-            if (_self.IsAllocated) _self.Free();
+
+            if (Volatile.Read(ref _activeCallbackThreadId) == Environment.CurrentManagedThreadId)
+            {
+                Volatile.Write(ref _disposeDeferred, 1);
+                return;
+            }
+
+            Interlocked.Exchange(ref _hookHandle, null)?.Dispose();
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
         private static void OnEvent(long context, uint eventType, long hwnd)
         {
+            if (GCHandle.FromIntPtr((IntPtr)context).Target is not WinEventHook hook)
+            {
+                return;
+            }
+
+            if (Volatile.Read(ref hook._disposed) != 0)
+            {
+                return;
+            }
+
+            Volatile.Write(ref hook._activeCallbackThreadId, Environment.CurrentManagedThreadId);
             try
             {
-                if (GCHandle.FromIntPtr((IntPtr)context).Target is WinEventHook hook)
-                    hook._handler(eventType, (IntPtr)hwnd);
+                hook._handler(eventType, (IntPtr)hwnd);
             }
             catch
             {
                 // Exceptions must never unwind into the native event thunk.
+            }
+            finally
+            {
+                Volatile.Write(ref hook._activeCallbackThreadId, 0);
+                if (Volatile.Read(ref hook._disposeDeferred) != 0)
+                {
+                    Interlocked.Exchange(ref hook._hookHandle, null)?.Dispose();
+                }
             }
         }
     }

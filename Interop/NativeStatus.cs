@@ -6,7 +6,8 @@ internal enum NativeStatus
     Ok = 0,
     InvalidArgument = -1,
     BufferTooSmall = -2,
-    Failure = -3
+    Failure = -3,
+    LimitExceeded = -4
 }
 
 internal static class NativeResult

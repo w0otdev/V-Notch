@@ -33,11 +33,7 @@ struct MeterEntry {
 };
 
 
-struct ProbeLockGuard {
-    SRWLOCK* lock;
-    explicit ProbeLockGuard(SRWLOCK* l) noexcept : lock(l) { AcquireSRWLockExclusive(lock); }
-    ~ProbeLockGuard() { ReleaseSRWLockExclusive(lock); }
-};
+using ProbeLockGuard = vnotch::com::SrwExclusiveGuard;
 
 struct Probe {
     SRWLOCK lock = SRWLOCK_INIT;
@@ -55,7 +51,7 @@ struct Probe {
     }
 };
 
-vnotch::HandleRegistry<Probe> g_probes;
+vnotch::ImmortalHandleRegistry<Probe> g_probes;
 
 bool EndpointMuted(IAudioEndpointVolume* volume) noexcept {
     BOOL muted = FALSE;
@@ -94,12 +90,10 @@ void CollectDevice(IMMDevice* device, std::vector<std::unique_ptr<MeterEntry>>& 
         if (entry->session_volume.ptr && SUCCEEDED(entry->session_volume.ptr->GetMute(&muted)) && muted) continue;
         basic.ptr->QueryInterface(IID_PPV_ARGS(entry->session_meter.Put()));
         if (endpoint_volume.ptr) {
-            entry->endpoint_volume.ptr = endpoint_volume.ptr;
-            entry->endpoint_volume.ptr->AddRef();
+            entry->endpoint_volume.Assign(endpoint_volume.ptr);
         }
         if (endpoint_meter.ptr) {
-            entry->endpoint_meter.ptr = endpoint_meter.ptr;
-            entry->endpoint_meter.ptr->AddRef();
+            entry->endpoint_meter.Assign(endpoint_meter.ptr);
         }
         out.push_back(std::move(entry));
     }
@@ -143,7 +137,7 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_create(mp::InvalidatedCallback callback
         auto probe = std::make_unique<mp::Probe>();
         HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(probe->enumerator.Put()));
         if (SUCCEEDED(hr)) {
-            probe->client.ptr = new vnotch::services::EndpointNotification(callback, context, true);
+            probe->client.Attach(new vnotch::services::EndpointNotification(callback, context, true));
             hr = probe->enumerator.ptr->RegisterEndpointNotificationCallback(probe->client.ptr);
             probe->registered = SUCCEEDED(hr);
         }
@@ -159,7 +153,7 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_create(mp::InvalidatedCallback callback
 VN_EXPORT int32_t __stdcall vn_mic_probe_destroy(int64_t handle) noexcept {
     if (handle <= 0) return VN_ERR_INVALID_ARG;
     auto owner = mp::g_probes.Acquire(handle);
-    if (owner) owner->client.ptr->Disconnect();
+    if (owner && owner->client.ptr) owner->client.ptr->Disconnect();
     mp::g_probes.Remove(handle);
     return VN_OK;
 }

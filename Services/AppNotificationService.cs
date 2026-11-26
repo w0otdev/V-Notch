@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using VNotch.Interop;
 using VNotch.Models;
 using Windows.UI.Notifications;
 using Windows.UI.Notifications.Management;
@@ -36,15 +37,16 @@ internal struct VnAppNotificationFilterResult
 
 public sealed partial class AppNotificationService : IDisposable
 {
+    private const string NativeDll = NativeAbi.LibraryName;
     private const string LogTag = "APP-NOTIFY";
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_appnotify_reset_state();
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_appnotify_seed_existing_id(uint notificationId, long creationUnixMs);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_appnotify_evaluate_and_format(
         uint notificationId,
         long creationUnixMs,
@@ -58,7 +60,7 @@ public sealed partial class AppNotificationService : IDisposable
         Span<ushort> outBodyBuf, int bodyCap,
         out VnAppNotificationFilterResult outResult);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_appnotify_compute_banner_metrics(
         double collapsedWidth,
         double collapsedHeight,
@@ -73,20 +75,20 @@ public sealed partial class AppNotificationService : IDisposable
         byte hasNewlineInBody,
         out VnAppNotificationBannerMetrics outMetrics);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_appnotify_try_activate_app(
         ReadOnlySpan<ushort> appIdPtr, int appIdLen,
         ReadOnlySpan<ushort> appNamePtr, int appNameLen,
         out byte outActivated);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_appnotify_resolve_app_icon_source(
         ReadOnlySpan<ushort> appIdPtr, int appIdLen,
         ReadOnlySpan<ushort> appNamePtr, int appNameLen,
         Span<ushort> outPathBuf, int pathCap,
         out int outPathLen);
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeDll)]
     private static partial int vn_appnotify_extract_initials(
         ReadOnlySpan<ushort> titlePtr, int titleLen,
         ReadOnlySpan<ushort> appNamePtr, int appNameLen,
@@ -292,31 +294,39 @@ public sealed partial class AppNotificationService : IDisposable
         lock (_listenerGate)
         {
             if (_disposed || _cts != null) return;
-            _cts = new CancellationTokenSource();
-            _listenerToken = _cts.Token;
-            _ = RunListenerLoopAsync(_listenerToken);
+            var cts = new CancellationTokenSource();
+            _cts = cts;
+            _listenerToken = cts.Token;
+            RunListenerLoopAsync(cts).SafeFireAndForget(LogTag);
         }
     }
 
-    private async Task RunListenerLoopAsync(CancellationToken ct)
+    private async Task RunListenerLoopAsync(CancellationTokenSource cts)
     {
+        CancellationToken ct = cts.Token;
         try
         {
             var listener = UserNotificationListener.Current;
+            // Keep the WinRT apartment/UI context through NotificationChanged subscription;
+            // resuming inline on the WinRT async completion callback crashes CsWinRT EventSource.
             var access = await listener.RequestAccessAsync();
-            if (access != UserNotificationListenerAccessStatus.Allowed || ct.IsCancellationRequested)
+            if (access != UserNotificationListenerAccessStatus.Allowed || ct.IsCancellationRequested || _disposed)
             {
                 RuntimeLog.Log(LogTag, $"UserNotificationListener access status: {access}");
                 return;
             }
 
             await SeedInitialNotificationsAsync(listener, ct);
+            if (ct.IsCancellationRequested || _disposed)
+            {
+                return;
+            }
 
             try
             {
                 lock (_listenerGate)
                 {
-                    if (_disposed) return;
+                    if (_disposed || ct.IsCancellationRequested) return;
                     listener.NotificationChanged += OnListenerNotificationChanged;
                     _listener = listener;
                     _notificationChangedSubscribed = true;
@@ -342,6 +352,15 @@ public sealed partial class AppNotificationService : IDisposable
         {
             RuntimeLog.Warn(LogTag, $"Notification listener stopped: {ex.Message}");
         }
+        finally
+        {
+            lock (_listenerGate)
+            {
+                if (ReferenceEquals(_cts, cts))
+                    _cts = null;
+            }
+            cts.Dispose();
+        }
     }
 
     private void OnListenerNotificationChanged(UserNotificationListener sender, UserNotificationChangedEventArgs args)
@@ -352,7 +371,7 @@ public sealed partial class AppNotificationService : IDisposable
         }
 
         var token = _listenerToken;
-        _ = PollNotificationsAsync(sender, token);
+        PollNotificationsAsync(sender, token).SafeFireAndForget(LogTag);
     }
 
     private static async Task SeedInitialNotificationsAsync(UserNotificationListener listener, CancellationToken ct)
@@ -492,7 +511,7 @@ public sealed partial class AppNotificationService : IDisposable
             var streamRef = displayInfo.GetLogo(new global::Windows.Foundation.Size(64, 64));
             if (streamRef == null) return null;
 
-            using var winrtStream = await streamRef.OpenReadAsync();
+            using var winrtStream = await streamRef.OpenReadAsync().AsTask().ConfigureAwait(false);
             using var netStream = winrtStream.AsStreamForRead();
             using var ms = new MemoryStream();
             await netStream.CopyToAsync(ms).ConfigureAwait(false);
@@ -507,8 +526,9 @@ public sealed partial class AppNotificationService : IDisposable
             bmp.Freeze();
             return NormalizeAppIcon(bmp);
         }
-        catch
+        catch (Exception ex)
         {
+            RuntimeLog.Warn(LogTag, $"Failed to load notification logo: {ex.Message}");
             return null;
         }
     }
@@ -530,6 +550,6 @@ public sealed partial class AppNotificationService : IDisposable
             _cts = null;
         }
         try { cts?.Cancel(); }
-        finally { cts?.Dispose(); }
+        catch (ObjectDisposedException) { /* RunListenerLoopAsync disposes cts on exit. */ }
     }
 }

@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -6,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using VNotch.Interop;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
@@ -17,13 +17,13 @@ public sealed class SpotlightAiException(string resourceKey, string? diagnostic 
 
 internal sealed partial class SpotlightAiService
 {
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_ai_validate_api_key(
         ReadOnlySpan<char> keyPtr,
         int keyLen,
         out byte outValid);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_ai_resolve_provider_error(
         int code,
         byte streaming,
@@ -34,7 +34,7 @@ internal sealed partial class SpotlightAiService
         int diagCap,
         out int outDiagLen);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_ai_resolve_stream_error(
         ReadOnlySpan<char> labelPtr,
         int labelLen,
@@ -46,7 +46,7 @@ internal sealed partial class SpotlightAiService
         int diagCap,
         out int outDiagLen);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_ai_parse_sse_data_line(
         ReadOnlySpan<char> linePtr,
         int lineLen,
@@ -55,7 +55,7 @@ internal sealed partial class SpotlightAiService
         out byte outIsData,
         out byte outIsDone);
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_ai_extract_json_delta(
         ReadOnlySpan<char> payloadPtr,
         int payloadLen,
@@ -173,23 +173,17 @@ internal sealed partial class SpotlightAiService
         using var reader = new StreamReader(stream);
         var events = new StreamEvents(settings, usage, onGeminiParts, onUsage);
         var lines = new StreamLines(events);
-        char[] rentedBuffer = ArrayPool<char>.Shared.Rent(4096);
-        try
+        // Dedicated buffer: timed-out ReadAsync calls on uncancellable streams may still touch it.
+        char[] readBuffer = new char[4096];
+        while (!events.Completed)
         {
-            while (!events.Completed)
+            int count = await ReadStreamChunkAsync(reader, readBuffer, token).ConfigureAwait(false);
+            if (count == 0)
             {
-                int count = await ReadStreamChunkAsync(reader, rentedBuffer, token).ConfigureAwait(false);
-                if (count == 0)
-                {
-                    foreach (var delta in lines.Finish()) yield return delta;
-                    break;
-                }
-                foreach (var delta in lines.Process(rentedBuffer, count)) yield return delta;
+                foreach (var delta in lines.Finish()) yield return delta;
+                break;
             }
-        }
-        finally
-        {
-            ArrayPool<char>.Shared.Return(rentedBuffer);
+            foreach (var delta in lines.Process(readBuffer, count)) yield return delta;
         }
         if (!events.Received) throw new SpotlightAiException("spotlight.ai.emptyError");
         if (!events.Completed) throw new SpotlightAiException("spotlight.ai.networkError");
@@ -299,8 +293,12 @@ internal sealed partial class SpotlightAiService
 
                 if (hasGeminiCandidates) ReadGeminiCompletion(candidates);
 
-                usage = usage.Read(root, provider);
-                onUsage?.Invoke(usage);
+                var updatedUsage = usage.Read(root, provider);
+                if (!Equals(updatedUsage, usage))
+                {
+                    usage = updatedUsage;
+                    onUsage?.Invoke(usage);
+                }
                 if (root.TryGetProperty("error", out var error))
                     throw StreamError(error);
 
@@ -327,7 +325,6 @@ internal sealed partial class SpotlightAiService
             if (status == 1) { Completed = true; return true; }
             if (status != 2) return false;
             if (completed != 0) Completed = true;
-            onUsage?.Invoke(usage);
             if (length > 0) delta = RecordDelta(new string(buffer[..length]));
             return true;
         }
@@ -471,7 +468,7 @@ internal sealed partial class SpotlightAiService
         return sb.ToString();
     }
 
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_ai_extract_response_text(
         ReadOnlySpan<char> jsonPtr,
         int jsonLen,

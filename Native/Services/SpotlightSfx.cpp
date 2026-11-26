@@ -8,8 +8,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -25,6 +27,7 @@
 namespace vnotch::services::spotlightsfx {
 
 using vnotch::com::ComPtr;
+using vnotch::com::ComScope;
 using vnotch::com::Guard;
 
 constexpr DWORD kFirstAudioStream = static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM);
@@ -34,28 +37,49 @@ constexpr double kNormalizeTarget = 22000.0;
 constexpr int kPcmClamp = 28000;
 constexpr size_t kMaxDecodedBytes = 16u * 1024u * 1024u;
 
-SRWLOCK g_lock = SRWLOCK_INIT;
-INIT_ONCE g_mf_once = INIT_ONCE_STATIC_INIT;
-bool g_loaded = false;
-uint32_t g_channels = 0;
-uint32_t g_sample_rate = 0;
-std::vector<int16_t> g_pcm;
-HWAVEOUT g_wave_out = nullptr;
 struct SfxSlot {
     WAVEHDR header{};
     std::vector<int16_t> pcm;
     bool prepared = false;
 };
-std::array<SfxSlot, 2> g_play{};
-int g_next_play = 0;
 
-BOOL CALLBACK StartMediaFoundation(PINIT_ONCE, PVOID, PVOID*) noexcept {
-    MFStartup(MF_VERSION, MFSTARTUP_LITE);
+struct SfxState {
+    SRWLOCK lock = SRWLOCK_INIT;
+    INIT_ONCE mf_once = INIT_ONCE_STATIC_INIT;
+    HRESULT mf_startup_hr = E_FAIL;
+    bool loaded = false;
+    uint32_t channels = 0;
+    uint32_t sample_rate = 0;
+    std::vector<int16_t> pcm;
+    HWAVEOUT wave_out = nullptr;
+    std::array<SfxSlot, 2> play{};
+    int next_play = 0;
+};
+
+// Intentionally never destroyed on DLL_PROCESS_DETACH: winmm/audio threads or waveOut buffers
+// must not run destructors under OS Loader Lock.
+alignas(SfxState) std::byte g_state_storage[sizeof(SfxState)]{};
+INIT_ONCE g_state_once = INIT_ONCE_STATIC_INIT;
+
+BOOL CALLBACK InitSfxState(PINIT_ONCE, PVOID, PVOID*) noexcept {
+    ::new (static_cast<void*>(g_state_storage)) SfxState();
+    return TRUE;
+}
+
+SfxState& State() noexcept {
+    InitOnceExecuteOnce(&g_state_once, InitSfxState, nullptr, nullptr);
+    return *std::launder(reinterpret_cast<SfxState*>(g_state_storage));
+}
+
+BOOL CALLBACK StartMediaFoundation(PINIT_ONCE, PVOID parameter, PVOID*) noexcept {
+    auto* out_hr = static_cast<HRESULT*>(parameter);
+    *out_hr = MFStartup(MF_VERSION, MFSTARTUP_LITE);
     return TRUE;
 }
 
 // Decodes the file to interleaved 16-bit PCM.
-HRESULT DecodePcm(const std::wstring& path, std::vector<uint8_t>& pcm, uint32_t& channels, uint32_t& sample_rate) {
+HRESULT DecodePcm(const std::wstring& path, std::vector<int16_t>& pcm, uint32_t& channels, uint32_t& sample_rate) {
+    ComScope com_scope;
     ComPtr<IMFSourceReader> reader;
     HRESULT hr = MFCreateSourceReaderFromURL(path.c_str(), nullptr, reader.Put());
     if (FAILED(hr)) return hr;
@@ -78,6 +102,9 @@ HRESULT DecodePcm(const std::wstring& path, std::vector<uint8_t>& pcm, uint32_t&
     actual.ptr->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &sample_rate);
     if (channels == 0 || channels > 8 || sample_rate < 8000 || sample_rate > 192000) return MF_E_INVALIDMEDIATYPE;
 
+    bool has_carry = false;
+    uint8_t carry_byte = 0;
+    size_t total_bytes = 0;
     for (;;) {
         DWORD flags = 0;
         ComPtr<IMFSample> sample;
@@ -90,36 +117,54 @@ HRESULT DecodePcm(const std::wstring& path, std::vector<uint8_t>& pcm, uint32_t&
         BYTE* data = nullptr;
         DWORD length = 0;
         if (FAILED(buffer.ptr->Lock(&data, nullptr, &length))) continue;
-        if (pcm.size() + length > kMaxDecodedBytes) {
+        if (total_bytes + length > kMaxDecodedBytes) {
             buffer.ptr->Unlock();
             return E_OUTOFMEMORY;
         }
-        pcm.insert(pcm.end(), data, data + length);
+        size_t pos = 0;
+        if (has_carry && length > 0) {
+            const uint8_t pair[2] = { carry_byte, data[0] };
+            int16_t s = 0;
+            std::memcpy(&s, pair, sizeof(int16_t));
+            pcm.push_back(s);
+            has_carry = false;
+            pos = 1;
+        }
+        const size_t rem = length - pos;
+        const size_t whole_samples = rem / sizeof(int16_t);
+        if (whole_samples > 0) {
+            const size_t old_size = pcm.size();
+            pcm.resize(old_size + whole_samples);
+            std::memcpy(pcm.data() + old_size, data + pos, whole_samples * sizeof(int16_t));
+        }
+        if ((rem & 1u) != 0) {
+            carry_byte = data[length - 1];
+            has_carry = true;
+        }
+        total_bytes += length;
         buffer.ptr->Unlock();
     }
     return pcm.empty() ? MF_E_INVALID_FORMAT : S_OK;
 }
 
-void SoftenAndNormalize(std::vector<uint8_t>& pcm, uint32_t channels) {
-    const size_t frame_bytes = static_cast<size_t>(channels) * 2;
-    pcm.resize(pcm.size() - pcm.size() % frame_bytes);
-    auto* samples = reinterpret_cast<int16_t*>(pcm.data());
-    const size_t total = pcm.size() / 2;
+void SoftenAndNormalize(std::vector<int16_t>& pcm, uint32_t channels) {
+    const size_t usable = pcm.size() - (pcm.size() % static_cast<size_t>(channels));
+    pcm.resize(usable);
 
     std::array<double, 8> pole1{};
     std::array<double, 8> pole2{};
     int max_after = 1;
-    for (size_t i = 0; i < total; ++i) {
+    for (size_t i = 0; i < usable; ++i) {
         const size_t ch = i % channels;
-        pole1[ch] += kLowPassCoefficient * (samples[i] - pole1[ch]);
+        pole1[ch] += kLowPassCoefficient * (pcm[i] - pole1[ch]);
         pole2[ch] += kLowPassCoefficient * (pole1[ch] - pole2[ch]);
         const int filtered = static_cast<int>(std::lround(pole2[ch]));
         max_after = std::max(max_after, std::abs(filtered));
-        samples[i] = static_cast<int16_t>(std::clamp(filtered, -32768, 32767));
+        pcm[i] = static_cast<int16_t>(std::clamp(filtered, -32768, 32767));
     }
     const double scale = std::min(kMaxNormalizeGain, kNormalizeTarget / max_after);
-    for (size_t i = 0; i < total; ++i)
-        samples[i] = static_cast<int16_t>(std::clamp<long>(std::lround(samples[i] * scale), -kPcmClamp, kPcmClamp));
+    for (size_t i = 0; i < usable; ++i)
+        pcm[i] = static_cast<int16_t>(std::clamp<long>(std::lround(pcm[i] * scale), -kPcmClamp, kPcmClamp));
 }
 
 } // namespace vnotch::services::spotlightsfx
@@ -133,10 +178,15 @@ VN_EXPORT int32_t __stdcall vn_spotlight_sfx_load(const char16_t* path, int32_t 
     if (!path || path_length <= 0 || path_length >= 32768 || !out_hresult) return VN_ERR_INVALID_ARG;
     *out_hresult = 0;
     try {
-        sfx::Guard guard(&sfx::g_lock);
-        if (sfx::g_loaded) return VN_OK;
-        InitOnceExecuteOnce(&sfx::g_mf_once, sfx::StartMediaFoundation, nullptr, nullptr);
-        std::vector<uint8_t> pcm;
+        sfx::SfxState& state = sfx::State();
+        sfx::Guard guard(&state.lock);
+        if (state.loaded) return VN_OK;
+        InitOnceExecuteOnce(&state.mf_once, sfx::StartMediaFoundation, &state.mf_startup_hr, nullptr);
+        if (FAILED(state.mf_startup_hr)) {
+            *out_hresult = static_cast<int32_t>(state.mf_startup_hr);
+            return VN_ERR_FAIL;
+        }
+        std::vector<int16_t> pcm;
         uint32_t channels = 0;
         uint32_t sample_rate = 0;
         const HRESULT hr = sfx::DecodePcm(std::wstring(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(path_length)), pcm, channels, sample_rate);
@@ -145,12 +195,10 @@ VN_EXPORT int32_t __stdcall vn_spotlight_sfx_load(const char16_t* path, int32_t 
             return VN_ERR_FAIL;
         }
         sfx::SoftenAndNormalize(pcm, channels);
-        const size_t sample_count = pcm.size() / sizeof(int16_t);
-        sfx::g_pcm.resize(sample_count);
-        std::memcpy(sfx::g_pcm.data(), pcm.data(), sample_count * sizeof(int16_t));
-        sfx::g_channels = channels;
-        sfx::g_sample_rate = sample_rate;
-        sfx::g_loaded = true;
+        state.pcm = std::move(pcm);
+        state.channels = channels;
+        state.sample_rate = sample_rate;
+        state.loaded = true;
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -161,42 +209,46 @@ VN_EXPORT int32_t __stdcall vn_spotlight_sfx_load(const char16_t* path, int32_t 
 VN_EXPORT int32_t __stdcall vn_spotlight_sfx_play(float volume) noexcept {
     if (!std::isfinite(volume)) return VN_ERR_INVALID_ARG;
     try {
-        sfx::Guard guard(&sfx::g_lock);
-        if (!sfx::g_loaded || sfx::g_pcm.empty()) return VN_ERR_FAIL;
-        if (!sfx::g_wave_out) {
+        sfx::SfxState& state = sfx::State();
+        sfx::Guard guard(&state.lock);
+        if (!state.loaded || state.pcm.empty()) return VN_ERR_FAIL;
+        if (!state.wave_out) {
             WAVEFORMATEX fmt{};
             fmt.wFormatTag = WAVE_FORMAT_PCM;
-            fmt.nChannels = static_cast<WORD>(sfx::g_channels);
-            fmt.nSamplesPerSec = sfx::g_sample_rate;
+            fmt.nChannels = static_cast<WORD>(state.channels);
+            fmt.nSamplesPerSec = state.sample_rate;
             fmt.wBitsPerSample = 16;
-            fmt.nBlockAlign = static_cast<WORD>(sfx::g_channels * 2);
-            fmt.nAvgBytesPerSec = sfx::g_sample_rate * fmt.nBlockAlign;
-            if (waveOutOpen(&sfx::g_wave_out, WAVE_MAPPER, &fmt, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR) {
-                sfx::g_wave_out = nullptr;
+            fmt.nBlockAlign = static_cast<WORD>(state.channels * 2);
+            fmt.nAvgBytesPerSec = state.sample_rate * fmt.nBlockAlign;
+            if (waveOutOpen(&state.wave_out, WAVE_MAPPER, &fmt, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR) {
+                state.wave_out = nullptr;
                 return VN_ERR_FAIL;
             }
         }
-        sfx::SfxSlot& slot = sfx::g_play[static_cast<size_t>(sfx::g_next_play)];
-        sfx::g_next_play ^= 1;
-        if (slot.prepared && !(slot.header.dwFlags & WHDR_DONE)) {
-            waveOutReset(sfx::g_wave_out);
+        for (auto& existing : state.play) {
+            if (existing.prepared && !(existing.header.dwFlags & WHDR_DONE)) {
+                waveOutReset(state.wave_out);
+                break;
+            }
         }
+        sfx::SfxSlot& slot = state.play[static_cast<size_t>(state.next_play)];
+        state.next_play ^= 1;
         if (slot.prepared) {
-            waveOutUnprepareHeader(sfx::g_wave_out, &slot.header, sizeof(WAVEHDR));
+            waveOutUnprepareHeader(state.wave_out, &slot.header, sizeof(WAVEHDR));
             slot.prepared = false;
         }
-        const size_t count = sfx::g_pcm.size();
+        const size_t count = state.pcm.size();
         slot.pcm.resize(count);
         const float gain = std::clamp(volume, 0.0f, 1.0f);
         for (size_t i = 0; i < count; ++i)
-            slot.pcm[i] = static_cast<int16_t>(std::clamp<long>(std::lrintf(static_cast<float>(sfx::g_pcm[i]) * gain), -32768L, 32767L));
+            slot.pcm[i] = static_cast<int16_t>(std::clamp<long>(std::lrintf(static_cast<float>(state.pcm[i]) * gain), -32768L, 32767L));
         slot.header = {};
         slot.header.lpData = reinterpret_cast<LPSTR>(slot.pcm.data());
         slot.header.dwBufferLength = static_cast<DWORD>(count * sizeof(int16_t));
-        if (waveOutPrepareHeader(sfx::g_wave_out, &slot.header, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) return VN_ERR_FAIL;
+        if (waveOutPrepareHeader(state.wave_out, &slot.header, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) return VN_ERR_FAIL;
         slot.prepared = true;
-        if (waveOutWrite(sfx::g_wave_out, &slot.header, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
-            waveOutUnprepareHeader(sfx::g_wave_out, &slot.header, sizeof(WAVEHDR));
+        if (waveOutWrite(state.wave_out, &slot.header, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+            waveOutUnprepareHeader(state.wave_out, &slot.header, sizeof(WAVEHDR));
             slot.prepared = false;
             return VN_ERR_FAIL;
         }
@@ -207,9 +259,10 @@ VN_EXPORT int32_t __stdcall vn_spotlight_sfx_play(float volume) noexcept {
 }
 
 VN_EXPORT int32_t __stdcall vn_spotlight_sfx_stop() noexcept {
-    sfx::Guard guard(&sfx::g_lock);
-    if (sfx::g_wave_out) {
-        waveOutReset(sfx::g_wave_out);
+    sfx::SfxState& state = sfx::State();
+    sfx::Guard guard(&state.lock);
+    if (state.wave_out) {
+        waveOutReset(state.wave_out);
     }
     return VN_OK;
 }
@@ -217,8 +270,9 @@ VN_EXPORT int32_t __stdcall vn_spotlight_sfx_stop() noexcept {
 // Whether load succeeded earlier (lets the caller skip the file search).
 VN_EXPORT int32_t __stdcall vn_spotlight_sfx_is_loaded(uint8_t* out_loaded) noexcept {
     if (!out_loaded) return VN_ERR_INVALID_ARG;
-    sfx::Guard guard(&sfx::g_lock);
-    *out_loaded = sfx::g_loaded ? 1 : 0;
+    sfx::SfxState& state = sfx::State();
+    sfx::Guard guard(&state.lock);
+    *out_loaded = state.loaded ? 1 : 0;
     return VN_OK;
 }
 

@@ -116,7 +116,7 @@ struct JsonResponse {
         rows.push_back(row);
     }
 };
-vnotch::HandleRegistry<JsonResponse> responses;
+vnotch::ImmortalHandleRegistry<JsonResponse> responses;
 int64_t duration(Json item) {
     const auto iso = item.get("contentDetails").get("duration").text(); int64_t ticks = 0;
     vn_youtube_parse_iso8601_duration_ticks(iso.data(), static_cast<int32_t>(iso.size()), &ticks);

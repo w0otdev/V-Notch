@@ -14,7 +14,8 @@ public sealed partial class ClipboardTray
     private int _deleteConfirmationCount;
     private bool _emptyTrayConfirmation;
 
-    internal async void EmptyTray_Click(object sender, RoutedEventArgs e) => await SafeAsync(ConfirmEmptyTrayAsync);
+    internal void EmptyTray_Click(object sender, RoutedEventArgs e)
+        => SafeAsync(ConfirmEmptyTrayAsync).SafeFireAndForget("CLIPBOARD-UI");
 
     internal Task ConfirmEmptyTrayAsync()
     {
@@ -35,7 +36,8 @@ public sealed partial class ClipboardTray
 
     private async Task ConfirmDeletionAsync(Guid[] ids, bool emptyTray)
     {
-        if (_controller == null || ids.Length == 0 || _deleteConfirmationOpen || _disposed) return;
+        var controller = _controller;
+        if (controller == null || ids.Length == 0 || _deleteConfirmationOpen || _disposed) return;
         _deleteConfirmationOpen = true;
         bool confirmed;
         try
@@ -71,17 +73,17 @@ public sealed partial class ClipboardTray
         }
 
         // The dialog is closed; deletion I/O must not hold the confirmation gate.
-        if (!confirmed || _disposed) return;
+        if (!confirmed || _disposed || controller != _controller) return;
         // Block interaction with cards whose files are being removed.
         TrayContentGrid.IsHitTestVisible = false;
         try
         {
             if (emptyTray)
             {
-                await _controller.Store.EmptyTrayAsync(ids);
+                await controller.Store.EmptyTrayAsync(ids);
                 return;
             }
-            await _controller.Store.DeleteManyAsync(ids);
+            await controller.Store.DeleteManyAsync(ids);
         }
         finally
         {

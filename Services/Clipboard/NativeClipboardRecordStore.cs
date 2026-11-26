@@ -3,6 +3,8 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.Win32.SafeHandles;
+using VNotch.Interop;
 
 namespace VNotch.Services.Clipboard;
 
@@ -10,23 +12,29 @@ namespace VNotch.Services.Clipboard;
 internal sealed partial class NativeClipboardRecordStore : IDisposable
 {
     private readonly RecordHandle _handle;
-    private sealed class RecordHandle : SafeHandle
+
+    private sealed class RecordHandle : SafeHandleZeroOrMinusOneIsInvalid
     {
-        public RecordHandle() : base(IntPtr.Zero, true) { }
-        internal RecordHandle(long value) : this() => SetHandle((nint)value);
-        public override bool IsInvalid => handle == IntPtr.Zero;
-        protected override bool ReleaseHandle() => vn_clipboard_record_close((long)handle) == 0;
+        public RecordHandle() : base(true) { }
+
+        protected override bool ReleaseHandle() =>
+            vn_clipboard_record_close(handle.ToInt64()) == (int)NativeStatus.Ok;
     }
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_clipboard_record_open(string root, int length, out long handle);
-    [LibraryImport("VNotch.Native.dll")]
+
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_record_open(string root, int length, out RecordHandle handle);
+
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_clipboard_record_close(long handle);
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_clipboard_record_migrate(RecordHandle handle, string path, int length);
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_clipboard_record_read(RecordHandle handle, string path, int length,
         Span<byte> buffer, int capacity, out int written);
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_clipboard_record_append(RecordHandle handle, string path, int pathLength,
         ReadOnlySpan<byte> payload, int length);
 
@@ -35,7 +43,8 @@ internal sealed partial class NativeClipboardRecordStore : IDisposable
     {
         public int DirectoryOffset, DirectoryLength, Status, PayloadLength, MigrationStatus;
     }
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+
+    [LibraryImport(NativeAbi.LibraryName, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_clipboard_record_startup_batch(RecordHandle handle,
         string directories, int directoryChars, Span<StartupItem> items, int count, Span<byte> payloads, int capacity);
 
@@ -59,11 +68,11 @@ internal sealed partial class NativeClipboardRecordStore : IDisposable
         try
         {
             if (vn_clipboard_record_startup_batch(_handle, paths, paths.Length, items, items.Length,
-                payloads, payloads.Length) != 0) throw new IOException("Could not read clipboard startup metadata.");
+                payloads, payloads.Length) != (int)NativeStatus.Ok) throw new IOException("Could not read clipboard startup metadata.");
             for (int i = 0; i < items.Length; i++)
             {
                 var item = items[i];
-                bool valid = item.Status == 0 && item.PayloadLength is > 0 and <= stride;
+                bool valid = item.Status == (int)NativeStatus.Ok && item.PayloadLength is > 0 and <= stride;
                 read(directories[i], valid ? payloads.AsSpan(i * stride, item.PayloadLength) : [],
                     needsFallback: !valid, migrationDeferred: item.MigrationStatus != 0);
             }
@@ -77,9 +86,13 @@ internal sealed partial class NativeClipboardRecordStore : IDisposable
 
     internal NativeClipboardRecordStore(string root)
     {
-        if (vn_clipboard_record_open(root, root.Length, out long handle) != 0)
+        if (vn_clipboard_record_open(root, root.Length, out RecordHandle handle) != (int)NativeStatus.Ok)
+        {
+            handle.Dispose();
             throw new IOException("Could not open the clipboard record store.");
-        _handle = new RecordHandle(handle);
+        }
+
+        _handle = handle;
     }
     // null identifies an existing legacy JSON document.
     internal byte[]? Read(string path)
@@ -105,12 +118,12 @@ internal sealed partial class NativeClipboardRecordStore : IDisposable
                 int status = vn_clipboard_record_read(_handle, path, path.Length, buffer, buffer.Length, out int written);
                 if (status == 1) return false;
                 if (status == 2) throw new FileNotFoundException("The clipboard record does not exist.", path);
-                if (status == 0 && written > 0 && written <= buffer.Length)
+                if (status == (int)NativeStatus.Ok && written > 0 && written <= buffer.Length)
                 {
                     value = parse(buffer[..written]);
                     return true;
                 }
-                if (status != -2 || written <= buffer.Length || written > 256 * 1024 * 1024)
+                if (status != (int)NativeStatus.BufferTooSmall || written <= buffer.Length || written > 256 * 1024 * 1024)
                     throw new IOException("Clipboard record authentication or read failed.");
                 CryptographicOperations.ZeroMemory(buffer);
                 if (rented != null) ArrayPool<byte>.Shared.Return(rented);
@@ -129,12 +142,12 @@ internal sealed partial class NativeClipboardRecordStore : IDisposable
     }
     internal void Append(string path, ReadOnlySpan<byte> payload)
     {
-        if (vn_clipboard_record_append(_handle, path, path.Length, payload, payload.Length) != 0)
+        if (vn_clipboard_record_append(_handle, path, path.Length, payload, payload.Length) != (int)NativeStatus.Ok)
             throw new IOException("Could not commit the clipboard record.");
     }
     internal void Migrate(string path)
     {
-        if (vn_clipboard_record_migrate(_handle, path, path.Length) != 0)
+        if (vn_clipboard_record_migrate(_handle, path, path.Length) != (int)NativeStatus.Ok)
             throw new IOException("Could not migrate the clipboard record.");
     }
     public void Dispose() => _handle.Dispose();

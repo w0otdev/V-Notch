@@ -1045,8 +1045,8 @@ public partial class SettingsWindow
             "digitalclock" => 3,
             WidgetWeather => 4,
             WidgetSysMon => 5,
-"aiusage" => 6,
-"none" => 7,
+            "aiusage" => 6,
+            "none" => 7,
             _ => 0
         };
     }
@@ -1252,7 +1252,10 @@ public partial class SettingsWindow
         }
     }
 
-    private async void ImportSettings_Click(object sender, RoutedEventArgs e)
+    private void ImportSettings_Click(object sender, RoutedEventArgs e)
+        => ImportSettingsFromDialogAsync().SafeFireAndForget("SETTINGS-IMPORT");
+
+    private async Task ImportSettingsFromDialogAsync()
     {
         try
         {

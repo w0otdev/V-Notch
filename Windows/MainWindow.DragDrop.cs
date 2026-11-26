@@ -78,7 +78,7 @@ public partial class MainWindow
         _clipboardDragAutoExpanded = false;
         if (collapse) CollapseNotch();
     }
-    private async void NotchWrapper_DragDrop(object sender, DragEventArgs e)
+    private void NotchWrapper_DragDrop(object sender, DragEventArgs e)
     {
         CancelDragDropTimers(); _clipboardDragAutoExpanded = false; _clipboardDragCanDrop = false;
         e.Handled = true;
@@ -86,8 +86,12 @@ public partial class MainWindow
         { e.Effects = DragDropEffects.None; return; }
         e.Effects = DragDropEffects.Copy;
         _transitionCoordinator.RequestView(NotchView.Secondary, "ClipboardDrop");
-        if (ClipboardTrayView != null) await ClipboardTrayView.ImportCurrentCategoryDropAsync(e.Data);
-        else await _clipboardHistory.ImportDropAsync(e.Data);
+        ImportClipboardDropAsync(e.Data).SafeFireAndForget("CLIPBOARD-DROP");
     }
+
+    private Task ImportClipboardDropAsync(IDataObject data) =>
+        ClipboardTrayView != null
+            ? ClipboardTrayView.ImportCurrentCategoryDropAsync(data)
+            : _clipboardHistory!.ImportDropAsync(data);
 }
 

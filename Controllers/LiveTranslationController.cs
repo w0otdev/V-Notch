@@ -62,6 +62,7 @@ internal sealed partial class LiveTranslationController : IDisposable
     internal void ApplySettings(NotchSettings settings)
     {
         _dispatcher.VerifyAccess();
+        if (_disposed) return;
         bool languagesChanged = _settings.TranslationSourceLanguage != TranslationLanguages.Normalize(settings.TranslationSourceLanguage, true) ||
             _settings.TranslationTargetLanguage != TranslationLanguages.Normalize(settings.TranslationTargetLanguage);
         bool optionsChanged = TranslationOptions.From(_settings) != TranslationOptions.From(settings);
@@ -95,7 +96,8 @@ internal sealed partial class LiveTranslationController : IDisposable
         _window?.ConfigureFormatting(_settings.FormatTranslationText);
         _window?.ApplyWindowShadow(_settings.EnableShadow);
         UpdateWatcher();
-        if (!changed && languagesChanged && _window?.IsVisible == true && _text.Length > 0) _ = TranslateAsync();
+        if (!changed && languagesChanged && _window?.IsVisible == true && _text.Length > 0)
+            TranslateAsync().SafeFireAndForget("TRANSLATION");
     }
 
     internal void ModelChanged()

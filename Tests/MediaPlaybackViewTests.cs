@@ -66,4 +66,16 @@ public sealed class MediaPlaybackViewTests
         await TestWait.DrainDispatcherAsync();
         Assert.Equal(1, media.PlayPauseCount);
     });
+
+    [Fact]
+    public void MediaPlaybackView_InputHandlers_AvoidAsyncVoid()
+    {
+        foreach (string name in new[] { "PlayPauseButton_Click", "NextButton_Click", "PrevButton_Click", "ProgressBar_MouseUp" })
+        {
+            var method = typeof(MediaPlaybackView).GetMethod(
+                name,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            Assert.Null(System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Runtime.CompilerServices.AsyncStateMachineAttribute>(method));
+        }
+    }
 }

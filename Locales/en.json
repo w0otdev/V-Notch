@@ -1001,6 +1001,7 @@
   "clipboard.archive": "Archive",
   "clipboard.unarchive": "Restore from Archive",
   "clipboard.delete": "Delete",
+  "clipboard.approvalQueueFull": "The approval queue is full. This item was not saved.",
   "clipboard.largeFile": "Save a local copy of {1}?\nTotal size: {0:N1} MB (over 50 MB).",
   "clipboard.dropHint": "Drag & drop files or images here to pin quickly",
   "clipboard.categoryOnlyImages": "This tab only accepts images.",

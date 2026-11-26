@@ -5,13 +5,14 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
+using VNotch.Interop;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight.Providers;
 
 internal sealed partial class WindowsSearchProvider : ISpotlightProvider
 {
-    private const string NativeDll = "VNotch.Native.dll";
+    private const string NativeDll = NativeAbi.LibraryName;
 
     public FileSearchRole FileRole => FileSearchRole.Supplemental;
     public void ConfigureExclusions(Func<string, bool>? isExcluded, Func<IReadOnlyList<string>>? excludedFolders)
@@ -21,7 +22,7 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
     internal Func<string, bool>? IsExcluded { get; set; }
 
     private const int QueryTimeoutMilliseconds = 1500;
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct SearchResult { public nint Name, Path; public int Folder; }
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]

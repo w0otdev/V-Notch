@@ -54,52 +54,42 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
 
     private bool TryCreateImagePreview(string source, string directory, bool personal)
     {
-        using var decrypted = personal ? new MemoryStream() : null;
         try
         {
-            Stream? publicStream = null;
-            using var input = personal ? File.OpenRead(source) : null;
+            using var stream = personal ? _vault.OpenAttachmentRead(source) : OpenPublicBlobRead(source);
+            var decoder = System.Windows.Media.Imaging.BitmapDecoder.Create(stream,
+                System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation,
+                System.Windows.Media.Imaging.BitmapCacheOption.None);
+            var frame = decoder.Frames[0];
+            int width = frame.PixelWidth, height = frame.PixelHeight;
+            stream.Position = 0;
+            var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            if (width >= height) bitmap.DecodePixelWidth = Math.Min(width, 840);
+            else bitmap.DecodePixelHeight = Math.Min(height, 840);
+            bitmap.StreamSource = stream;
+            bitmap.EndInit();
+            bitmap.Freeze();
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+            using var output = new MemoryStream();
             try
             {
-                if (decrypted != null) { _vault.TransformFile(input!, decrypted, false); decrypted.Position = 0; }
-                else publicStream = OpenPublicBlobRead(source);
-                Stream stream = decrypted ?? publicStream!;
-                var decoder = System.Windows.Media.Imaging.BitmapDecoder.Create(stream,
-                    System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation,
-                    System.Windows.Media.Imaging.BitmapCacheOption.None);
-                var frame = decoder.Frames[0];
-                int width = frame.PixelWidth, height = frame.PixelHeight;
-                stream.Position = 0;
-                var bitmap = new System.Windows.Media.Imaging.BitmapImage();
-                bitmap.BeginInit();
-                bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-                if (width >= height) bitmap.DecodePixelWidth = Math.Min(width, 840);
-                else bitmap.DecodePixelHeight = Math.Min(height, 840);
-                bitmap.StreamSource = stream;
-                bitmap.EndInit();
-                bitmap.Freeze();
-                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
-                using var output = new MemoryStream();
                 encoder.Save(output);
-                try
-                {
-                    var bytes = output.GetBuffer().AsSpan(0, checked((int)output.Length));
-                    string previewPath = Path.Combine(directory, "image.png" + (personal ? ".enc" : ""));
-                    if (personal) File.WriteAllBytes(previewPath, _vault.Seal(bytes));
-                    else WritePublicBlobBytes(previewPath, bytes);
-                }
-                finally { CryptographicOperations.ZeroMemory(output.GetBuffer()); }
-                return true;
+                var bytes = output.GetBuffer().AsSpan(0, checked((int)output.Length));
+                string previewPath = Path.Combine(directory, "image.png" + (personal ? ".enc" : ""));
+                if (personal) File.WriteAllBytes(previewPath, _vault.Seal(bytes));
+                else WritePublicBlobBytes(previewPath, bytes);
             }
-            finally { publicStream?.Dispose(); }
+            finally { CryptographicOperations.ZeroMemory(output.GetBuffer()); }
+            return true;
         }
         catch (Exception ex) when (ex is IOException or NotSupportedException or InvalidOperationException or ArgumentException)
         {
             SafeFileDeletion.DeleteFile(Path.Combine(directory, "image.png" + (personal ? ".enc" : "")));
             return false;
         }
-        finally { if (decrypted != null) CryptographicOperations.ZeroMemory(decrypted.GetBuffer()); }
     }
 
     private static bool IsScreenshotFileName(string name) =>

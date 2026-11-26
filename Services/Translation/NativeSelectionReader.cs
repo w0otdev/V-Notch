@@ -8,7 +8,7 @@ namespace VNotch.Services.Translation;
 
 internal static partial class NativeSelectionReader
 {
-    private const string NativeDll = "VNotch.Native.dll";
+    private const string NativeDll = Interop.NativeAbi.LibraryName;
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_native_selection_is_edit(

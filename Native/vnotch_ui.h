@@ -133,17 +133,24 @@ VN_EXPORT int32_t __stdcall vn_dust_particles_dissolve_impulse(
     float origin_y,
     uint32_t* io_rng_state) noexcept;
 VN_EXPORT int32_t __stdcall vn_spotlight_search_compare_keys(
-    double score_a,
-    const char16_t* title_a_ptr,
-    int32_t title_a_len,
-    const char16_t* id_a_ptr,
-    int32_t id_a_len,
-    double score_b,
-    const char16_t* title_b_ptr,
-    int32_t title_b_len,
-    const char16_t* id_b_ptr,
-    int32_t id_b_len,
-    int32_t* out_cmp) noexcept;
+    double score_a, const char16_t* title_a_ptr, int32_t title_a_len,
+    const char16_t* id_a_ptr, int32_t id_a_len,
+    double score_b, const char16_t* title_b_ptr, int32_t title_b_len,
+    const char16_t* id_b_ptr, int32_t id_b_len, int32_t* out_cmp) noexcept;
+
+// Rows contain offsets into a caller-owned UTF-16 arena; calls retain no pointers.
+struct VnAppRankRow {
+    int32_t offset, raw_title, title, subtitle, stem, filename, bonus;
+};
+struct VnAppRankMatch { double score; int32_t index, reserved; };
+static_assert(sizeof(VnAppRankRow) == 28 && sizeof(VnAppRankMatch) == 16);
+VN_EXPORT int32_t vn_spotlight_prepare_app(
+    const char16_t* display, int32_t display_len, const char16_t* raw, int32_t raw_len,
+    const char16_t* subtitle, int32_t subtitle_len, const char16_t* target, int32_t target_len,
+    char16_t* buffer, int32_t capacity, VnAppRankRow* row, int32_t* written) noexcept;
+VN_EXPORT int32_t vn_spotlight_rank_apps(
+    const VnAppRankRow* rows, int32_t count, const char16_t* arena, int32_t arena_len,
+    const char16_t* query, int32_t query_len, VnAppRankMatch* matches, int32_t limit, int32_t* found) noexcept;
 VN_EXPORT int32_t __stdcall vn_spotlight_launcher_reveal_in_explorer(
     const char16_t* path,
     int32_t path_len) noexcept;
@@ -174,6 +181,8 @@ VN_EXPORT int32_t __stdcall vn_markdown_scan_span_boundaries(
     const char16_t* text_ptr,
     int32_t text_len,
     VnMarkdownBoundarySummary* out_summary) noexcept;
+VN_EXPORT int32_t __stdcall vn_markdown_reveal_prefix(
+    const char16_t* text, int32_t length, int32_t words, int32_t* end) noexcept;
 VN_EXPORT int32_t __stdcall vn_settings_search_normalize_row(
     const char16_t* title_ptr,
     int32_t title_len,

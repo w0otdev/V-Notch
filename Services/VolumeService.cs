@@ -1,4 +1,7 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+using VNotch.Interop;
 
 namespace VNotch.Services;
 
@@ -16,33 +19,66 @@ internal interface IVolumeEndpointSource : IDisposable
 
 public sealed partial class VolumeService : IVolumeService
 {
-    private const string NativeDll = "VNotch.Native.dll";
-
-    [LibraryImport(NativeDll)]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_volume_service_clamp_scalar(
         float volume,
         out float outClamped);
 
-    [LibraryImport(NativeDll)]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_volume_source_create(nint callback, long context, out long handle, out int hresult);
 
-    [LibraryImport(NativeDll)]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_volume_source_destroy(long handle);
 
-    [LibraryImport(NativeDll)]
-    private static partial int vn_volume_endpoint_open(long source, out long handle, out int hresult);
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_volume_endpoint_open(VolumeSourceHandle source, out VolumeEndpointHandle handle, out int hresult);
 
-    [LibraryImport(NativeDll)]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_volume_endpoint_close(long handle);
 
-    [LibraryImport(NativeDll)]
-    private static partial int vn_volume_endpoint_get(long handle, out float scalar, out byte muted, out int hresult);
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_volume_endpoint_get(VolumeEndpointHandle handle, out float scalar, out byte muted, out int hresult);
 
-    [LibraryImport(NativeDll)]
-    private static partial int vn_volume_endpoint_set_volume(long handle, float scalar, out int hresult);
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_volume_endpoint_set_volume(VolumeEndpointHandle handle, float scalar, out int hresult);
 
-    [LibraryImport(NativeDll)]
-    private static partial int vn_volume_endpoint_set_mute(long handle, byte muted, out int hresult);
+    [LibraryImport(NativeAbi.LibraryName)]
+    private static partial int vn_volume_endpoint_set_mute(VolumeEndpointHandle handle, byte muted, out int hresult);
+
+    private sealed class VolumeSourceHandle : SafeHandleZeroOrMinusOneIsInvalid
+    {
+        private GCHandle _callbackRoot;
+
+        internal VolumeSourceHandle(long handleValue, GCHandle callbackRoot)
+            : base(true)
+        {
+            SetHandle((nint)handleValue);
+            _callbackRoot = callbackRoot;
+        }
+
+        protected override bool ReleaseHandle()
+        {
+            long nativeHandle = handle.ToInt64();
+            if (nativeHandle > 0)
+            {
+                vn_volume_source_destroy(nativeHandle);
+            }
+
+            if (_callbackRoot.IsAllocated)
+            {
+                _callbackRoot.Free();
+            }
+
+            return true;
+        }
+    }
+
+    private sealed class VolumeEndpointHandle : SafeHandleZeroOrMinusOneIsInvalid
+    {
+        public VolumeEndpointHandle() : base(true) { }
+
+        protected override bool ReleaseHandle() => vn_volume_endpoint_close(handle.ToInt64()) == (int)NativeStatus.Ok;
+    }
     private const string LogCategory = "VOLUME";
     private readonly object _sync = new();
     private readonly IVolumeEndpointSource _source;
@@ -192,67 +228,107 @@ public sealed partial class VolumeService : IVolumeService
     private sealed unsafe class CoreAudioVolumeEndpointSource : IVolumeEndpointSource
     {
         private const int EFail = unchecked((int)0x80004005);
-        private long _source;
-        private GCHandle _self;
+        private VolumeSourceHandle? _sourceHandle;
+        private int _activeCallbackThreadId;
+        private int _disposed;
+        private int _disposeDeferred;
 
         public event Action? DefaultDeviceChanged;
 
         public IVolumeEndpoint OpenDefault()
         {
-            if (_source == 0)
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            VolumeSourceHandle? sourceHandle = Volatile.Read(ref _sourceHandle);
+            if (sourceHandle is null || sourceHandle.IsInvalid || sourceHandle.IsClosed)
             {
-                _self = GCHandle.Alloc(this);
+                using var pending = new PendingCallbackHandle(this);
                 delegate* unmanaged[Stdcall]<long, void> callback = &OnDeviceChanged;
-                if (vn_volume_source_create((nint)callback, GCHandle.ToIntPtr(_self), out long source, out int createHr) != 0)
+                if (vn_volume_source_create((nint)callback, pending.Context, out long source, out int createHr) != (int)NativeStatus.Ok)
                 {
-                    _self.Free();
                     Marshal.ThrowExceptionForHR(createHr < 0 ? createHr : EFail);
                 }
 
-                _source = source;
+                sourceHandle = new VolumeSourceHandle(source, pending.Transfer());
+                Volatile.Write(ref _sourceHandle, sourceHandle);
             }
 
-            if (vn_volume_endpoint_open(_source, out long endpoint, out int openHr) != 0)
+            if (vn_volume_endpoint_open(sourceHandle, out VolumeEndpointHandle endpoint, out int openHr) != (int)NativeStatus.Ok)
+            {
                 Marshal.ThrowExceptionForHR(openHr < 0 ? openHr : EFail);
+            }
+
             return new CoreAudioVolumeEndpoint(endpoint);
         }
 
         // Runs on a Core Audio thread: record the change only, the service re-opens on its next call.
-        [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
         private static void OnDeviceChanged(long context)
         {
+            if (GCHandle.FromIntPtr((IntPtr)context).Target is not CoreAudioVolumeEndpointSource source)
+            {
+                return;
+            }
+
+            if (Volatile.Read(ref source._disposed) != 0)
+            {
+                return;
+            }
+
+            Volatile.Write(ref source._activeCallbackThreadId, Environment.CurrentManagedThreadId);
             try
             {
-                if (GCHandle.FromIntPtr((IntPtr)context).Target is CoreAudioVolumeEndpointSource source)
-                    source.DefaultDeviceChanged?.Invoke();
+                source.DefaultDeviceChanged?.Invoke();
             }
             catch (Exception)
             {
                 // Exceptions must not unwind into the native notification thread.
             }
+            finally
+            {
+                Volatile.Write(ref source._activeCallbackThreadId, 0);
+                if (Volatile.Read(ref source._disposeDeferred) != 0)
+                {
+                    Interlocked.Exchange(ref source._sourceHandle, null)?.Dispose();
+                }
+            }
         }
 
         public void Dispose()
         {
-            if (_source == 0) return;
-            vn_volume_source_destroy(_source);
-            _source = 0;
-            if (_self.IsAllocated) _self.Free();
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            if (Volatile.Read(ref _activeCallbackThreadId) == Environment.CurrentManagedThreadId)
+            {
+                Volatile.Write(ref _disposeDeferred, 1);
+                return;
+            }
+
+            Interlocked.Exchange(ref _sourceHandle, null)?.Dispose();
         }
     }
 
-    private sealed class CoreAudioVolumeEndpoint(long handle) : IVolumeEndpoint
+    private sealed class CoreAudioVolumeEndpoint(VolumeEndpointHandle handle) : IVolumeEndpoint
     {
         public float Volume
         {
             get
             {
-                if (vn_volume_endpoint_get(handle, out float scalar, out _, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                if (vn_volume_endpoint_get(handle, out float scalar, out _, out int hr) != (int)NativeStatus.Ok)
+                {
+                    Marshal.ThrowExceptionForHR(hr);
+                }
+
                 return scalar;
             }
             set
             {
-                if (vn_volume_endpoint_set_volume(handle, value, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                if (vn_volume_endpoint_set_volume(handle, value, out int hr) != (int)NativeStatus.Ok)
+                {
+                    Marshal.ThrowExceptionForHR(hr);
+                }
             }
         }
 
@@ -260,15 +336,22 @@ public sealed partial class VolumeService : IVolumeService
         {
             get
             {
-                if (vn_volume_endpoint_get(handle, out _, out byte muted, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                if (vn_volume_endpoint_get(handle, out _, out byte muted, out int hr) != (int)NativeStatus.Ok)
+                {
+                    Marshal.ThrowExceptionForHR(hr);
+                }
+
                 return muted != 0;
             }
             set
             {
-                if (vn_volume_endpoint_set_mute(handle, value ? (byte)1 : (byte)0, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                if (vn_volume_endpoint_set_mute(handle, value ? (byte)1 : (byte)0, out int hr) != (int)NativeStatus.Ok)
+                {
+                    Marshal.ThrowExceptionForHR(hr);
+                }
             }
         }
 
-        public void Dispose() => vn_volume_endpoint_close(handle);
+        public void Dispose() => handle.Dispose();
     }
 }

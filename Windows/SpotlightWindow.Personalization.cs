@@ -17,7 +17,7 @@ public partial class SpotlightWindow
         if (item?.Kind == SpotlightResultKind.Application)
         {
             AddMenuItem(menu, Loc.Get(preferences.IsPinned(item.Target) ? "spotlight.unpin" : "spotlight.pin"),
-                () => _ = TogglePinnedApplication(item), QuickActionPinGeometry);
+                () => TogglePinnedApplication(item).SafeFireAndForget("SPOTLIGHT-PIN"), QuickActionPinGeometry);
             AddMenuItem(menu, Loc.Get("spotlight.alias"), () => EditSpotlightPreferences(item), QuickActionAliasGeometry);
         }
         if (item?.Kind is SpotlightResultKind.File or SpotlightResultKind.Folder)
@@ -27,7 +27,7 @@ public partial class SpotlightWindow
                 string? folder = item.Kind == SpotlightResultKind.Folder ? item.Target : Path.GetDirectoryName(item.Target);
                 if (string.IsNullOrEmpty(folder)) return;
                 preferences.SetExcludedFolders(preferences.GetExcludedFolders().Append(folder));
-                _ = RefreshPersonalizedResults();
+                RefreshPersonalizedResults().SafeFireAndForget("SPOTLIGHT-SEARCH");
             }, QuickActionExcludeFolderGeometry);
         }
         AddMenuItem(menu, Loc.Get("spotlight.excludedFolders"), () => EditSpotlightPreferences(null), QuickActionExcludeFolderGeometry);
@@ -102,7 +102,7 @@ public partial class SpotlightWindow
         try
         {
             var dialog = new Windows.SpotlightPreferencesDialog(preferences, item) { Owner = this };
-            if (dialog.ShowDialog() == true) _ = RefreshPersonalizedResults();
+            if (dialog.ShowDialog() == true) RefreshPersonalizedResults().SafeFireAndForget("SPOTLIGHT-SEARCH");
         }
         finally
         {

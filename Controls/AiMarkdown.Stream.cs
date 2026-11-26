@@ -1,17 +1,28 @@
 using System;
-using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
+using VNotch.Interop;
 using MdInline = Markdig.Syntax.Inlines.Inline;
 
 namespace VNotch.Controls;
 
 internal static partial class AiMarkdown
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_markdown_reveal_prefix(ReadOnlySpan<char> text, int length, int words, out int end);
+
+    internal static int RevealPrefixLength(ReadOnlySpan<char> text, int words)
+    {
+        if (text.IsEmpty || words >= text.Length) return text.Length;
+        NativeResult.RequireSuccess(vn_markdown_reveal_prefix(text, text.Length, Math.Max(1, words), out int end),
+            nameof(vn_markdown_reveal_prefix));
+        return end;
+    }
+
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_ai_markdown_close_stream_spans(
         ReadOnlySpan<char> md,
@@ -30,40 +41,12 @@ internal static partial class AiMarkdown
 
         internal bool Advance(string markdown, int words, double fadeMilliseconds)
         {
-            int previous = _revealed, remaining = Math.Max(1, words);
-            ReadOnlySpan<char> unrevealed = markdown.AsSpan(previous);
-            if (!unrevealed.IsEmpty)
-            {
-                Span<VnMarkdownWordSlice> stackSlices = stackalloc VnMarkdownWordSlice[128];
-                _ = vn_markdown_scan_word_spans(unrevealed, unrevealed.Length, stackSlices, stackSlices.Length, out int totalWords);
-                if (totalWords <= remaining)
-                {
-                    _revealed = markdown.Length;
-                }
-                else if (remaining <= stackSlices.Length)
-                {
-                    var target = stackSlices[remaining - 1];
-                    _revealed = previous + target.Start + target.Length;
-                }
-                else
-                {
-                    var rented = ArrayPool<VnMarkdownWordSlice>.Shared.Rent(remaining);
-                    try
-                    {
-                        _ = vn_markdown_scan_word_spans(unrevealed, unrevealed.Length, rented, remaining, out _);
-                        var target = rented[remaining - 1];
-                        _revealed = previous + target.Start + target.Length;
-                    }
-                    finally
-                    {
-                        ArrayPool<VnMarkdownWordSlice>.Shared.Return(rented);
-                    }
-                }
-            }
+            int previous = _revealed;
+            _revealed += RevealPrefixLength(markdown.AsSpan(previous), words);
             if (_revealed == previous) return _revealed == markdown.Length;
             string tail = markdown[_committed.._revealed];
             string balanced = CloseSpans(tail);
-            var parsed = GetOrParseDocument(balanced);
+            var parsed = MarkdownWpfRenderer.Parse(balanced);
             // Only the final Markdown block can still change as more words arrive.
             // Preserve completed paragraphs, lists, tables and code blocks in WPF.
             int stable = Math.Max(0, parsed.Count - 1);
@@ -72,7 +55,7 @@ internal static partial class AiMarkdown
                 return _revealed == markdown.Length;
             _paragraph = null;
             _inlines.Clear();
-            var rendered = Render(balanced, uniformBold: uniformBold);
+            var rendered = RenderParsed(parsed, null, false, uniformBold);
             if (rendered.Blocks.LastBlock is { } last) FadeLastWord(last.ContentStart, last.ContentEnd, fadeMilliseconds);
             while (Document.Blocks.Count > _stableBlocks) Document.Blocks.Remove(Document.Blocks.LastBlock);
             while (rendered.Blocks.FirstBlock is { } block)

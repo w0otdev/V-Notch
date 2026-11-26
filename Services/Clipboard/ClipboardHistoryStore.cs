@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using VNotch.Interop;
 using VNotch.Models;
 
 namespace VNotch.Services.Clipboard;
@@ -15,7 +16,7 @@ namespace VNotch.Services.Clipboard;
 /// Disk work is serialized off the UI thread; full-text search uses a bounded memory cache.</summary>
 public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposable
 {
-    private const string NativeDll = "VNotch.Native.dll";
+    private const string NativeDll = NativeAbi.LibraryName;
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_clipboard_store_matches_category_core(
@@ -730,14 +731,13 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         return vn_clipboard_store_is_sharing_violation_hresult(ex.HResult, out byte isSv) == 0 && isSv != 0;
     }
 
-    // UI owners use DisposeAsync to drain queued work. Synchronous disposal waits a
-    // bounded time for the same cleanup so queued writes are not lost on exit. Queued
-    // work runs on TaskScheduler.Default and never needs the UI dispatcher.
+    // UI owners use DisposeAsync to drain queued work. Synchronous disposal offloads the wait
+    // onto the thread pool so SyncContext continuations cannot deadlock against the caller.
     public void Dispose()
     {
         try
         {
-            if (!DisposeAsync().AsTask().Wait(DisposeDrainTimeout))
+            if (!Task.Run(() => DisposeAsync().AsTask()).Wait(DisposeDrainTimeout))
                 RuntimeLog.Log("CLIPBOARD-STORE-DISPOSE", $"Pending work did not finish within {DisposeDrainTimeout.TotalSeconds:0}s");
         }
         catch (Exception ex)

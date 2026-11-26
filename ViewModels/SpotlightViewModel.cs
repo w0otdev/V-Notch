@@ -26,6 +26,8 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
     private readonly SpotlightUsageStore _usage;
     private readonly Dispatcher _dispatcher;
     private CancellationTokenSource? _searchCts;
+    private readonly object _hydrationLock = new();
+    private readonly List<CancellationTokenSource> _activeHydrationCts = new();
     private long _queryGeneration;
 
     public ObservableCollection<SpotlightSearchItem> Results { get; } = new();
@@ -60,8 +62,9 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
         if (!string.Equals(Query, query, StringComparison.Ordinal)) SelectedResult = null;
         Query = query;
         CancelPendingSearch();
-        _searchCts = new CancellationTokenSource();
-        CancellationToken cancellationToken = _searchCts.Token;
+        using var searchCts = new CancellationTokenSource();
+        Interlocked.Exchange(ref _searchCts, searchCts)?.Cancel();
+        CancellationToken cancellationToken = searchCts.Token;
 
         long generation = Interlocked.Increment(ref _queryGeneration);
 
@@ -77,9 +80,10 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
                 var pinned = await Task.Run(() => _usage.Preferences.Search(""), cancellationToken);
                 if (_disposed || generation != Interlocked.Read(ref _queryGeneration)) return;
                 Publish(TakeUpTo(pinned, ResultLimit), markNoResults: false);
-                StartIconHydration(Results, generation, cancellationToken);
+                StartIconHydration(Results, generation);
             }
             catch (OperationCanceledException) { /* Expected when query changes. */ }
+            finally { Interlocked.CompareExchange(ref _searchCts, null, searchCts); }
             return;
         }
 
@@ -101,7 +105,7 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
                 IsFileSearchPartial = update.FileCompleteness == Services.Spotlight.Providers.SearchCompleteness.Partial;
                 IsWindowsSearchUnavailable = update.FileCompleteness == Services.Spotlight.Providers.SearchCompleteness.Unavailable || !_search.IsWindowsSearchAvailable;
                 Publish(update.Results, markNoResults: update.IsComplete);
-                StartIconHydration(update.Results, generation, cancellationToken);
+                StartIconHydration(update.Results, generation);
             }
         }
         catch (OperationCanceledException)
@@ -117,6 +121,7 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
         }
         finally
         {
+            Interlocked.CompareExchange(ref _searchCts, null, searchCts);
             if (!_disposed && generation == Interlocked.Read(ref _queryGeneration) &&
                 !cancellationToken.IsCancellationRequested) IsSearching = false;
         }
@@ -288,20 +293,24 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
     {
         _requestedIcons.Clear();
         Interlocked.Increment(ref _queryGeneration);
-        var cts = Interlocked.Exchange(ref _searchCts, null);
-        if (cts != null)
+        Interlocked.Exchange(ref _searchCts, null)?.Cancel();
+        lock (_hydrationLock)
         {
-            cts.Cancel();
-            cts.Dispose();
+            for (int i = 0; i < _activeHydrationCts.Count; i++)
+            {
+                try { _activeHydrationCts[i].Cancel(); }
+                catch (ObjectDisposedException) { }
+            }
         }
         IsSearching = false;
     }
 
     private void StartIconHydration(
         IReadOnlyList<SpotlightSearchItem> items,
-        long generation,
-        CancellationToken cancellationToken)
+        long generation)
     {
+        if (_disposed || Interlocked.Read(ref _queryGeneration) != generation) return;
+
         List<SpotlightSearchItem>? toHydrate = null;
         for (int i = 0; i < items.Count; i++)
         {
@@ -316,12 +325,24 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
 
         if (toHydrate == null) return;
 
-        Task.Run(async () =>
+        var hydrationCts = new CancellationTokenSource();
+        lock (_hydrationLock)
+        {
+            if (_disposed || Interlocked.Read(ref _queryGeneration) != generation)
+            {
+                hydrationCts.Dispose();
+                return;
+            }
+            _activeHydrationCts.Add(hydrationCts);
+        }
+
+        CancellationToken hydrationToken = hydrationCts.Token;
+        _ = Task.Run(async () =>
         {
             var parallelOptions = new ParallelOptions
             {
                 MaxDegreeOfParallelism = MaxIconConcurrency,
-                CancellationToken = cancellationToken
+                CancellationToken = hydrationToken
             };
 
             try
@@ -330,8 +351,6 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
                 {
                     ct.ThrowIfCancellationRequested();
                     if (Interlocked.Read(ref _queryGeneration) != generation) return;
-
-                    if (item.Icon != null) return;
 
                     ImageSource? icon;
                     await IconSlots.WaitAsync(ct).ConfigureAwait(false);
@@ -372,7 +391,12 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
             {
                 RuntimeLog.Warn("SPOTLIGHT-ICON", $"Icon hydration error: {ex.Message}");
             }
-        }, cancellationToken);
+            finally
+            {
+                lock (_hydrationLock) _activeHydrationCts.Remove(hydrationCts);
+                hydrationCts.Dispose();
+            }
+        });
     }
 
     private void ApplyLoadedIcon(SpotlightSearchItem item, ImageSource icon, long generation)

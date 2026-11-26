@@ -472,7 +472,7 @@ public class MediaDetectionServiceLifecycleTests
         };
 
         service.CommitPublishedState(info, info.GetSignature());
-        service.StartThumbnailFetchIfNeeded(info, false);
+        _ = service.StartThumbnailFetchIfNeeded(info, false);
 
         var downloadToken = await downloadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(downloadToken.IsCancellationRequested);
@@ -533,7 +533,7 @@ public class MediaDetectionServiceLifecycleTests
         };
 
         service.CommitPublishedState(info, info.GetSignature());
-        service.StartThumbnailFetchIfNeeded(info, false);
+        var fetch = service.StartThumbnailFetchIfNeeded(info, false);
 
         await downloadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -542,8 +542,7 @@ public class MediaDetectionServiceLifecycleTests
 
         allowDownloadComplete.TrySetResult();
 
-        Assert.True(SpinWait.SpinUntil(() => service.ThumbnailCancellation == null, TimeSpan.FromSeconds(5)),
-            "Expected _thumbCts to be cleared after thumbnail fetch completes normally.");
+        await fetch.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Null(service.ThumbnailCancellation);
         Assert.Throws<ObjectDisposedException>(() => _ = capturedCts!.Token);
     }

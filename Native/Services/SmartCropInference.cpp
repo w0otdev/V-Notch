@@ -77,6 +77,11 @@ public:
         runtime_module = nullptr;
     }
 
+    HMODULE Module() const noexcept {
+        std::lock_guard lock(runtime_gate);
+        return runtime_module;
+    }
+
     RuntimeLease(const RuntimeLease&) = delete;
     RuntimeLease& operator=(const RuntimeLease&) = delete;
 };
@@ -113,8 +118,10 @@ struct CropSession {
             options.DisableCpuMemArena();
             options.SetInterOpNumThreads(1); options.SetIntraOpNumThreads(1);
             if (prefer_dml) {
-                const auto append = reinterpret_cast<AppendDml>(GetProcAddress(GetModuleHandleW(L"onnxruntime.dll"),
-                    "OrtSessionOptionsAppendExecutionProvider_DML"));
+                const HMODULE module = runtime.Module();
+                const auto append = module
+                    ? reinterpret_cast<AppendDml>(GetProcAddress(module, "OrtSessionOptionsAppendExecutionProvider_DML"))
+                    : nullptr;
                 if (!append) throw std::runtime_error("DirectML provider unavailable");
                 Ort::ThrowOnError(append(options, 0));
             }
@@ -140,7 +147,7 @@ struct CropSession {
         session.Run(Ort::RunOptions{nullptr}, inputs, &input_value, 1, outputs, &output_value, 1);
     }
 };
-vnotch::HandleRegistry<CropSession> sessions;
+vnotch::ImmortalHandleRegistry<CropSession> sessions;
 }
 
 VN_EXPORT int32_t vn_smartcrop_parse_yolox_and_nms(const float*, int32_t, int32_t, float,

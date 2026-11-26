@@ -34,11 +34,12 @@
 #include "Services/Translation/LiteTranslationAbi.h"
 
 // Flat parsing results borrow native-owned storage until their close function.
+#pragma pack(push, 1)
 struct VnLyricWord { int64_t start, end; int32_t offset, length; };
 struct VnLyricLine { int64_t start; int32_t offset, length, word_offset, word_count; };
-static_assert(sizeof(VnLyricWord) == 24 && sizeof(VnLyricLine) == 24);
-
 struct VnClipboardDirectoryRow { int64_t size, modified; int32_t offset, length; uint32_t attributes, reserved; };
+#pragma pack(pop)
+static_assert(sizeof(VnLyricWord) == 24 && sizeof(VnLyricLine) == 24 && sizeof(VnClipboardDirectoryRow) == 32);
 
 #pragma pack(push, 1)
 struct VnYoutubeJsonRow {

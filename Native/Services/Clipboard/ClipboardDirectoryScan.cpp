@@ -5,8 +5,14 @@
 VN_EXPORT int32_t vn_clipboard_validate_reparse_point(const char16_t*, int32_t, uint32_t, int32_t*, int32_t*) noexcept;
 namespace {
 struct Scan { std::vector<VnClipboardDirectoryRow> rows; std::u16string text; };
-vnotch::HandleRegistry<Scan> scans;
-struct Search { HANDLE handle; ~Search() { if (handle != INVALID_HANDLE_VALUE) FindClose(handle); } };
+vnotch::ImmortalHandleRegistry<Scan> scans;
+struct Search {
+    HANDLE handle = INVALID_HANDLE_VALUE;
+    explicit Search(HANDLE h) noexcept : handle(h) {}
+    Search(const Search&) = delete;
+    Search& operator=(const Search&) = delete;
+    ~Search() { if (handle != INVALID_HANDLE_VALUE) FindClose(handle); }
+};
 struct Entry { std::wstring name; WIN32_FIND_DATAW data; };
 }
 VN_EXPORT int32_t vn_clipboard_directory_scan(const char16_t* root, int32_t length, const char16_t* excluded, int32_t excluded_length, int32_t limit,
@@ -42,7 +48,7 @@ VN_EXPORT int32_t vn_clipboard_directory_scan(const char16_t* root, int32_t leng
                 std::wstring_view name(data.cFileName);
                 if (name == L"." || name == L"..") continue;
                 children.push_back({std::wstring(name), data});
-                if (children.size() + result->rows.size() > static_cast<size_t>(limit)) return -4;
+                if (children.size() + result->rows.size() > static_cast<size_t>(limit)) return VN_ERR_LIMIT_EXCEEDED;
             } while (FindNextFileW(search.handle, &data));
             if (GetLastError() != ERROR_NO_MORE_FILES) { *win32_error = GetLastError(); return VN_ERR_FAIL; }
             std::sort(children.begin(), children.end(), [](auto& a, auto& b) { return a.name < b.name; });
@@ -56,7 +62,7 @@ VN_EXPORT int32_t vn_clipboard_directory_scan(const char16_t* root, int32_t leng
                         *win32_error = error ? error : ERROR_ACCESS_DENIED; return VN_ERR_FAIL;
                     }
                 }
-                if (result->text.size() + view.size() > 32 * 1024 * 1024) return -4;
+                if (result->text.size() + view.size() > 32 * 1024 * 1024) return VN_ERR_LIMIT_EXCEEDED;
                 const auto size = (static_cast<uint64_t>(child.data.nFileSizeHigh) << 32) | child.data.nFileSizeLow;
                 const auto date = (static_cast<uint64_t>(child.data.ftLastWriteTime.dwHighDateTime) << 32) | child.data.ftLastWriteTime.dwLowDateTime;
                 result->rows.push_back({static_cast<int64_t>(size), static_cast<int64_t>(date), static_cast<int32_t>(result->text.size()), static_cast<int32_t>(view.size()), child.data.dwFileAttributes, 0});

@@ -1,11 +1,13 @@
 #pragma once
 #include "GlassShaders.g.h"
+#include "../vnotch_com.h"
 #include <d3d11_4.h>
 #include <dxgi1_2.h>
 #include <wrl/client.h>
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <vector>
 
 namespace vnotch::graphics {
@@ -50,10 +52,17 @@ struct GlassDevice final {
     }
     static std::shared_ptr<GlassDevice> Acquire(IDXGIAdapter1* adapter) {
         struct Cached { LUID luid; std::weak_ptr<GlassDevice> owner; };
-        static std::mutex gate;
-        static std::vector<Cached> cache;
+        static SRWLOCK gate = SRWLOCK_INIT;
+        // Immortal storage: COM device entries must not invoke ~shared_ptr under DLL_PROCESS_DETACH loader lock.
+        alignas(std::vector<Cached>) static unsigned char cacheStorage[sizeof(std::vector<Cached>)];
+        static bool cacheInitialized = false;
         DXGI_ADAPTER_DESC1 desc{}; Check(adapter->GetDesc1(&desc));
-        std::lock_guard lock(gate);
+        vnotch::com::SrwExclusiveGuard lock(&gate);
+        if (!cacheInitialized) {
+            new (cacheStorage) std::vector<Cached>();
+            cacheInitialized = true;
+        }
+        auto& cache = *std::launder(reinterpret_cast<std::vector<Cached>*>(cacheStorage));
         std::erase_if(cache, [](const auto& entry) { return entry.owner.expired(); });
         for (auto& entry : cache) {
             if (entry.luid.HighPart != desc.AdapterLuid.HighPart || entry.luid.LowPart != desc.AdapterLuid.LowPart) continue;

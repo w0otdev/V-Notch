@@ -105,13 +105,14 @@ public partial class ChangelogView : UserControl
         }
     }
 
-    private async void VersionScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    private void VersionScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
         if (e.VerticalChange > 0 && VersionScrollViewer.ScrollableHeight - e.VerticalOffset <= 120)
-            await LoadOlderVersionsAsync();
+            LoadOlderVersionsAsync().SafeFireAndForget("CHANGELOG-LOAD");
     }
 
-    private async void OlderVersions_Click(object sender, RoutedEventArgs e) => await LoadOlderVersionsAsync();
+    private void OlderVersions_Click(object sender, RoutedEventArgs e)
+        => LoadOlderVersionsAsync().SafeFireAndForget("CHANGELOG-LOAD");
 
     internal async Task LoadOlderVersionsAsync()
     {
@@ -129,7 +130,7 @@ public partial class ChangelogView : UserControl
             if (generation == _loadGeneration && !token.IsCancellationRequested)
                 MergePage(page, pageNumber, service.CurrentVersion);
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { /* Lifetime canceled on close. */ }
         catch (Exception ex)
         {
             if (generation == _loadGeneration)
@@ -155,9 +156,12 @@ public partial class ChangelogView : UserControl
             bool numbered = UpdateService.TryParseReleaseVersion(release.Version, out _, out var prerelease);
             _releases.Add(tag, new ChangelogEntry
             {
-                Version = release.Version, Label = tag, Content = release.ReleaseNotes,
+                Version = release.Version,
+                Label = tag,
+                Content = release.ReleaseNotes,
                 Date = release.PublishedAt == default ? null : release.PublishedAt.ToLocalTime(),
-                Numbered = numbered, Prerelease = release.IsPrerelease || (numbered && prerelease.Length != 0)
+                Numbered = numbered,
+                Prerelease = release.IsPrerelease || (numbered && prerelease.Length != 0)
             });
         }
 
@@ -170,7 +174,9 @@ public partial class ChangelogView : UserControl
         {
             current = _installedOnly ??= new ChangelogEntry
             {
-                Version = currentVersion, Label = currentVersion, Numbered = numberedCurrent,
+                Version = currentVersion,
+                Label = currentVersion,
+                Numbered = numberedCurrent,
                 Prerelease = numberedCurrent && currentPrerelease.Length != 0,
                 Content = Loc.Get("changelog.currentInstalled")
             };
@@ -366,7 +372,8 @@ public partial class ChangelogView : UserControl
                 label.SetResourceReference(TextBlock.ForegroundProperty, entry.Prerelease ? "PrereleaseVersionBrush" : "StableVersionBrush");
             var badge = new Border
             {
-                Child = label, CornerRadius = new CornerRadius(8),
+                Child = label,
+                CornerRadius = new CornerRadius(8),
                 Padding = compact ? new Thickness(4, 1, 4, 1) : new Thickness(7, 2, 7, 2),
                 Margin = new Thickness(0, 0, compact ? 3 : 6, 0)
             };

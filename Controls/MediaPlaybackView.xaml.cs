@@ -143,9 +143,15 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
     }
 
 
-    internal async void PlayPauseButton_Click(object sender, MouseButtonEventArgs e)
+    internal void PlayPauseButton_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
+        if (_disposed || _viewModel == null) return;
+        ExecutePlayPauseAsync().SafeFireAndForget("MEDIA-CTRL");
+    }
+
+    private async Task ExecutePlayPauseAsync()
+    {
         if (_disposed || _viewModel == null) return;
         try
         {
@@ -158,9 +164,15 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
         catch (Exception ex) { RuntimeLog.Error("MEDIA-CTRL", ex, "PlayPause failed"); }
     }
 
-    internal async void NextButton_Click(object sender, MouseButtonEventArgs e)
+    internal void NextButton_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
+        if (_disposed || _viewModel == null) return;
+        ExecuteNextTrackAsync().SafeFireAndForget("MEDIA-CTRL");
+    }
+
+    private async Task ExecuteNextTrackAsync()
+    {
         if (_disposed || _viewModel == null) return;
         try
         {
@@ -172,9 +184,15 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
         catch (Exception ex) { RuntimeLog.Error("MEDIA-CTRL", ex, "NextTrack failed"); }
     }
 
-    internal async void PrevButton_Click(object sender, MouseButtonEventArgs e)
+    internal void PrevButton_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
+        if (_disposed || _viewModel == null) return;
+        ExecutePreviousTrackAsync().SafeFireAndForget("MEDIA-CTRL");
+    }
+
+    private async Task ExecutePreviousTrackAsync()
+    {
         if (_disposed || _viewModel == null) return;
         try
         {
@@ -1328,7 +1346,7 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
         }
     }
 
-    private async void ProgressBar_MouseUp(object sender, MouseButtonEventArgs e)
+    private void ProgressBar_MouseUp(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
 
@@ -1342,22 +1360,23 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
 
         ProgressBarContainer.ReleaseMouseCapture();
 
-        _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, (System.Action)(() =>
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, (System.Action)(() =>
         {
-
             if (prevExpanded && !ProgressBarContainer.IsMouseOver)
             {
-
                 _isProgressBarExpanded = false;
                 AnimateProgressBarHover(false);
             }
-
         }));
 
         if (wasDragging || wasClickSeek)
-        {
-            await SeekToPosition(_dragSeekPosition);
-        }
+            SeekToPositionSafeAsync(_dragSeekPosition).SafeFireAndForget("MEDIA-SEEK");
+    }
+
+    private async Task SeekToPositionSafeAsync(TimeSpan position)
+    {
+        try { await SeekToPosition(position); }
+        catch (Exception ex) { RuntimeLog.Error("MEDIA-SEEK", ex, "Progress bar seek failed"); }
     }
 
     private void ProgressBar_LostMouseCapture(object sender, MouseEventArgs e)

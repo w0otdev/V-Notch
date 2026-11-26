@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using VNotch.Interop;
 using VNotch.Services;
 using static VNotch.Services.Win32Interop;
 
@@ -244,7 +245,7 @@ public partial class MainWindow
             : Task.Run(() => ProbeNotchObscuredByAnyWindow(notchHwnd));
     }
 
-    [LibraryImport("VNotch.Native.dll")]
+    [LibraryImport(NativeAbi.LibraryName)]
     private static partial int vn_desktop_edge_probe_notch_obscured(
         IntPtr selfHwnd,
         out byte outObscured);

@@ -55,15 +55,25 @@ public partial class SpotlightWindow
             (usage?.Updated is { } updated ? $"\n{updated:HH:mm:ss} · {provider}" : "") +
             (usage?.Reset is { } reset ? "\n" + Loc.Get("spotlight.ai.usage.reset", reset) : "") +
             (identity == _balanceIdentity ? "\n" + Loc.Get("spotlight.ai.usage.balanceUpdated", _balanceUpdated.ToString("T", Loc.GetCulture())) : "");
-        bool hasQuota = usage?.Remaining != null && usage.Limit > 0;
-        AiQuotaBar.Visibility = hasQuota ? Visibility.Visible : Visibility.Collapsed;
-        AiQuotaBar.Value = hasQuota ? Math.Clamp(100d * usage!.Remaining!.Value / usage.Limit!.Value, 0, 100) : 0;
+        if (usage is { Remaining: long remainingTokens, Limit: > 0 and long limitTokens })
+        {
+            AiQuotaBar.Visibility = Visibility.Visible;
+            AiQuotaBar.Value = Math.Clamp(100d * remainingTokens / limitTokens, 0, 100);
+        }
+        else
+        {
+            AiQuotaBar.Visibility = Visibility.Collapsed;
+            AiQuotaBar.Value = 0;
+        }
         AiUsageRefresh.Visibility = provider == "DeepSeek" ? Visibility.Visible : Visibility.Collapsed;
         AiUsageRefresh.IsEnabled = !_balanceLoading;
         AiUsageRefresh.ToolTip = Loc.Get("spotlight.ai.usage.refresh");
     }
 
-    private async void AiUsageRefresh_Click(object sender, RoutedEventArgs e)
+    private void AiUsageRefresh_Click(object sender, RoutedEventArgs e) =>
+        RefreshDeepSeekBalanceAsync().SafeFireAndForget("SPOTLIGHT-AI");
+
+    private async Task RefreshDeepSeekBalanceAsync()
     {
         if (_balanceLoading || CurrentAiIdentity().Provider != "DeepSeek") return;
         if (_settings.EnableLocalOnlyMode || !_settings.AllowOnlineAi) { SetAiStatus("spotlight.ai.privacyBlocked"); return; }
@@ -79,8 +89,9 @@ public partial class SpotlightWindow
             _balanceText = result;
             _balanceUpdated = DateTimeOffset.Now;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            RuntimeLog.Warn("SPOTLIGHT-AI", $"DeepSeek balance refresh failed: {ex.GetType().Name}");
             _balanceIdentity = identity;
             _balanceText = null;
             _balanceUpdated = DateTimeOffset.Now;

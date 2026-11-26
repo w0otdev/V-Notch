@@ -3,7 +3,7 @@
 #include <UIAutomation.h>
 #include <wrl/client.h>
 #include <deque>
-#include <mutex>
+#include <new>
 
 #pragma comment(lib, "uiautomationcore.lib")
 #pragma comment(lib, "oleaut32.lib")
@@ -238,36 +238,45 @@ VN_EXPORT int32_t __stdcall vn_spotify_read_local_track(
 
     try {
         vnotch::com::EnsureMta();
-        static std::mutex s_gate;
-        static Ptr<IUIAutomation> s_api;
-        static Ptr<IUIAutomationCondition> s_doc_cond;
-        static Ptr<IUIAutomationCacheRequest> s_link_cache;
+        struct UiAutomationState {
+            Ptr<IUIAutomation> api;
+            Ptr<IUIAutomationCondition> doc_cond;
+            Ptr<IUIAutomationCacheRequest> link_cache;
+        };
+        static SRWLOCK s_gate = SRWLOCK_INIT;
+        alignas(UiAutomationState) static unsigned char s_state_storage[sizeof(UiAutomationState)];
+        static bool s_state_initialized = false;
 
-        std::lock_guard lock(s_gate);
+        vnotch::com::SrwExclusiveGuard lock(&s_gate);
+        if (!s_state_initialized) {
+            new (s_state_storage) UiAutomationState();
+            s_state_initialized = true;
+        }
+        auto& state = *std::launder(reinterpret_cast<UiAutomationState*>(s_state_storage));
         auto reset_automation = [&]() noexcept {
-            s_link_cache.Reset();
-            s_doc_cond.Reset();
-            s_api.Reset();
+            state.link_cache.Reset();
+            state.doc_cond.Reset();
+            state.api.Reset();
         };
         auto ensure_automation = [&]() noexcept -> bool {
-            if (s_api && s_doc_cond && s_link_cache) return true;
+            if (state.api && state.doc_cond && state.link_cache) return true;
             reset_automation();
-            if (FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(s_api.GetAddressOf()))) || !s_api) {
+            if (FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(state.api.GetAddressOf()))) || !state.api) {
                 reset_automation();
                 return false;
             }
             Variant doc_type;
             doc_type.value.vt = VT_I4;
             doc_type.value.lVal = UIA_DocumentControlTypeId;
-            if (FAILED(s_api->CreatePropertyCondition(UIA_ControlTypePropertyId, doc_type.value, s_doc_cond.GetAddressOf())) || !s_doc_cond) {
+            if (FAILED(state.api->CreatePropertyCondition(UIA_ControlTypePropertyId, doc_type.value, state.doc_cond.GetAddressOf())) || !state.doc_cond) {
                 reset_automation();
                 return false;
             }
-            if (FAILED(s_api->CreateCacheRequest(s_link_cache.GetAddressOf())) || !s_link_cache ||
-                FAILED(s_link_cache->put_TreeScope(TreeScope_Element)) ||
-                FAILED(s_link_cache->AddProperty(UIA_NamePropertyId)) ||
-                FAILED(s_link_cache->AddProperty(UIA_ValueValuePropertyId)) ||
-                FAILED(s_link_cache->AddProperty(UIA_LegacyIAccessibleValuePropertyId))) {
+            if (FAILED(state.api->CreateCacheRequest(state.link_cache.GetAddressOf())) || !state.link_cache ||
+                FAILED(state.link_cache->put_TreeScope(TreeScope_Element)) ||
+                FAILED(state.link_cache->AddProperty(UIA_NamePropertyId)) ||
+                FAILED(state.link_cache->AddProperty(UIA_ValueValuePropertyId)) ||
+                FAILED(state.link_cache->AddProperty(UIA_LegacyIAccessibleValuePropertyId))) {
                 reset_automation();
                 return false;
             }
@@ -303,23 +312,23 @@ VN_EXPORT int32_t __stdcall vn_spotify_read_local_track(
         for (HWND hwnd : windows) {
             if (!IsWindow(hwnd)) continue;
             Ptr<IUIAutomationElement> root, candidate_doc;
-            HRESULT hr = s_api->ElementFromHandle(hwnd, root.GetAddressOf());
+            HRESULT hr = state.api->ElementFromHandle(hwnd, root.GetAddressOf());
             if (is_stale_com_error(hr)) {
                 reset_automation();
                 vnotch::com::EnsureMta();
                 if (!ensure_automation()) return VN_ERR_FAIL;
-                hr = s_api->ElementFromHandle(hwnd, root.GetAddressOf());
+                hr = state.api->ElementFromHandle(hwnd, root.GetAddressOf());
             }
             if (FAILED(hr) || !root) continue;
 
-            hr = root->FindFirstBuildCache(TreeScope_Descendants, s_doc_cond.Get(), s_link_cache.Get(), candidate_doc.GetAddressOf());
+            hr = root->FindFirstBuildCache(TreeScope_Descendants, state.doc_cond.Get(), state.link_cache.Get(), candidate_doc.GetAddressOf());
             if (is_stale_com_error(hr)) {
                 reset_automation();
                 vnotch::com::EnsureMta();
                 if (!ensure_automation()) return VN_ERR_FAIL;
                 root.Reset();
-                if (FAILED(s_api->ElementFromHandle(hwnd, root.GetAddressOf())) || !root) continue;
-                hr = root->FindFirstBuildCache(TreeScope_Descendants, s_doc_cond.Get(), s_link_cache.Get(), candidate_doc.GetAddressOf());
+                if (FAILED(state.api->ElementFromHandle(hwnd, root.GetAddressOf())) || !root) continue;
+                hr = root->FindFirstBuildCache(TreeScope_Descendants, state.doc_cond.Get(), state.link_cache.Get(), candidate_doc.GetAddressOf());
             }
             if (FAILED(hr) || !candidate_doc) continue;
 
@@ -348,11 +357,11 @@ VN_EXPORT int32_t __stdcall vn_spotify_read_local_track(
             name_var.value.bstrVal = SysAllocStringLen(reinterpret_cast<const OLECHAR*>(title_str.data()), static_cast<UINT>(title_str.size()));
             if (name_var.value.bstrVal) {
                 Ptr<IUIAutomationCondition> by_type, by_name, link_cond;
-                if (SUCCEEDED(s_api->CreatePropertyCondition(UIA_ControlTypePropertyId, ctrl_var.value, by_type.GetAddressOf())) &&
-                    SUCCEEDED(s_api->CreatePropertyCondition(UIA_NamePropertyId, name_var.value, by_name.GetAddressOf())) &&
-                    SUCCEEDED(s_api->CreateAndCondition(by_type.Get(), by_name.Get(), link_cond.GetAddressOf()))) {
+                if (SUCCEEDED(state.api->CreatePropertyCondition(UIA_ControlTypePropertyId, ctrl_var.value, by_type.GetAddressOf())) &&
+                    SUCCEEDED(state.api->CreatePropertyCondition(UIA_NamePropertyId, name_var.value, by_name.GetAddressOf())) &&
+                    SUCCEEDED(state.api->CreateAndCondition(by_type.Get(), by_name.Get(), link_cond.GetAddressOf()))) {
                     Ptr<IUIAutomationElementArray> links;
-                    const HRESULT find_hr = doc->FindAllBuildCache(TreeScope_Descendants, link_cond.Get(), s_link_cache.Get(), links.GetAddressOf());
+                    const HRESULT find_hr = doc->FindAllBuildCache(TreeScope_Descendants, link_cond.Get(), state.link_cache.Get(), links.GetAddressOf());
                     if (is_stale_com_error(find_hr)) {
                         reset_automation();
                     } else if (SUCCEEDED(find_hr) && links) {
