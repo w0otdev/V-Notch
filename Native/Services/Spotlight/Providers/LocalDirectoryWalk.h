@@ -127,30 +127,24 @@ struct Walk {
     Walk(Walk&&) = delete;
     Walk& operator=(Walk&&) = delete;
     ~Walk() { if (cursor != INVALID_HANDLE_VALUE) FindClose(cursor); }
-    bool Done() const noexcept { return cursor == INVALID_HANDLE_VALUE && !ticket.entries && pending.empty(); }
+    bool Done() const noexcept { return cursor == INVALID_HANDLE_VALUE && pending.empty(); }
 
     // The returned entry stays alive until the next Next() call. Cached names
     // and normalized text are borrowed instead of copied for every query.
     const DirectoryEntry* Next() {
         auto& directoryCache = GetDirectoryCache();
-        if (ticket.entries) {
-            if (cachedIndex < ticket.entries->size()) return &(*ticket.entries)[cachedIndex++];
-            ticket = {};
-            return nullptr;
-        }
         if (cursor == INVALID_HANDLE_VALUE) {
             if (pending.empty()) return nullptr;
             directory = std::move(pending.front()); pending.pop_front();
             ticket = directoryCache.Read(directory);
             cachedIndex = 0;
-            if (ticket.entries) return Next();
             std::wstring pattern = L"\\\\?\\" + directory;
             if (pattern.back() != L'\\') pattern.push_back(L'\\');
             pattern.push_back(L'*');
             cursor = FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &data, FindExSearchNameMatch,
                 nullptr, FIND_FIRST_EX_LARGE_FETCH);
             if (cursor == INVALID_HANDLE_VALUE) { ticket = {}; return nullptr; }
-            collected = std::make_shared<DirectoryEntries>();
+            if (!ticket.entries) collected = std::make_shared<DirectoryEntries>();
             collectedStringBytes = 0;
             haveFirst = true;
         }
@@ -162,6 +156,13 @@ struct Walk {
             return nullptr;
         }
         haveFirst = false;
+        // A notification may arrive after the next query starts. Reuse normalized
+        // names only for entries confirmed by this enumeration.
+        if (ticket.entries && cachedIndex < ticket.entries->size()) {
+            const auto& cached = (*ticket.entries)[cachedIndex++];
+            if (cached.name == data.cFileName && cached.attributes == data.dwFileAttributes)
+                return &cached;
+        }
         current.name = data.cFileName;
         current.normalized = normalize_search({reinterpret_cast<const char16_t*>(current.name.data()), current.name.size()});
         current.attributes = data.dwFileAttributes;
